@@ -1,0 +1,16 @@
+{
+  "name": "@claude-agent/config-wizard",
+  "version": "1.0.0",
+  "description": "Interactive configuration wizard with validation and import/export",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

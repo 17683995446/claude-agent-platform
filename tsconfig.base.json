@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@claude-agent/types": ["./packages/types/src"],
+      "@claude-agent/errors": ["./packages/errors/src"],
+      "@claude-agent/logger": ["./packages/logger/src"],
+      "@claude-agent/config": ["./packages/config/src"],
+      "@claude-agent/core": ["./packages/core/src"],
+      "@claude-agent/pipeline": ["./packages/pipeline/src"],
+      "@claude-agent/plugins": ["./packages/plugins/src"],
+      "@claude-agent/cli": ["./packages/cli/src"],
+      "@claude-agent/http": ["./packages/http/src"],
+      "@claude-agent/orchestrator": ["./packages/orchestrator/src"],
+      "@claude-agent/perf": ["./packages/perf/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

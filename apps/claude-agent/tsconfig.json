@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@claude-agent/types": ["../../packages/types/src"],
+      "@claude-agent/errors": ["../../packages/errors/src"],
+      "@claude-agent/logger": ["../../packages/logger/src"],
+      "@claude-agent/config": ["../../packages/config/src"],
+      "@claude-agent/core": ["../../packages/core/src"],
+      "@claude-agent/pipeline": ["../../packages/pipeline/src"],
+      "@claude-agent/plugins": ["../../packages/plugins/src"],
+      "@claude-agent/http": ["../../packages/http/src"],
+      "@claude-agent/cli": ["../../packages/cli/src"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/errors" },
+    { "path": "../../packages/logger" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/pipeline" },
+    { "path": "../../packages/plugins" },
+    { "path": "../../packages/http" },
+    { "path": "../../packages/cli" }
+  ]
+}

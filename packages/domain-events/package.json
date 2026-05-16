@@ -1,0 +1,19 @@
+{
+  "name": "@claude-agent/domain-events",
+  "version": "1.0.0",
+  "description": "Domain events with sync/async, aggregation, versioning, and serialization",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*",
+    "@claude-agent/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

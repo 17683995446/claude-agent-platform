@@ -1,0 +1,16 @@
+{
+  "name": "@claude-agent/themes",
+  "version": "1.0.0",
+  "description": "Theme system with light/dark themes, inheritance, and CSS variables",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

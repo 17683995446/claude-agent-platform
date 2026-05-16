@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@claude-agent/types": ["../types/src"],
+      "@claude-agent/errors": ["../errors/src"],
+      "@claude-agent/logger": ["../logger/src"],
+      "@claude-agent/core": ["../core/src"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../logger" },
+    { "path": "../core" }
+  ]
+}

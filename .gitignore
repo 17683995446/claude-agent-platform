@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# Bun
+bun.lockb
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary
+/tmp/
+*.tmp
+
+# Data files (large)
+*.db
+*.sqlite

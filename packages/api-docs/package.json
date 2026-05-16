@@ -1,0 +1,16 @@
+{
+  "name": "@claude-agent/api-docs",
+  "version": "1.0.0",
+  "description": "Auto-generated API documentation with search",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

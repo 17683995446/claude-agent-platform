@@ -1,0 +1,36 @@
+{
+  "name": "claude-agent-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Claude Agent Platform - agent-runtime and claude-code-toolkit deeply integrated",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "bun run build:types && bun run build:errors && bun run build:logger && bun run build:config && bun run build:core && bun run build:pipeline && bun run build:plugins && bun run build:http && bun run build:orchestrator && bun run build:perf && bun run build:cli",
+    "build:types": "cd packages/types && bun run build",
+    "build:errors": "cd packages/errors && bun run build",
+    "build:logger": "cd packages/logger && bun run build",
+    "build:config": "cd packages/config && bun run build",
+    "build:core": "cd packages/core && bun run build",
+    "build:pipeline": "cd packages/pipeline && bun run build",
+    "build:plugins": "cd packages/plugins && bun run build",
+    "build:http": "cd packages/http && bun run build",
+    "build:orchestrator": "cd packages/orchestrator && bun run build",
+    "build:perf": "cd packages/perf && bun run build",
+    "build:cli": "cd packages/cli && bun run build",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "lint": "eslint 'packages/*/src/**/*.ts' 'apps/*/src/**/*.ts'",
+    "format": "prettier --write 'packages/*/src/**/*.ts' 'apps/*/src/**/*.ts'",
+    "clean": "rm -rf packages/*/dist apps/*/dist",
+    "dev": "bun run --watch apps/claude-agent/src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.0",
+    "zod": "^4.4.3"
+  },
+  "packageManager": "bun@1.1.0"
+}

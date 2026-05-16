@@ -1,0 +1,543 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "claude-agent-platform",
+      "devDependencies": {
+        "@types/bun": "^1.1.0",
+        "typescript": "^5.6.0",
+        "zod": "^4.4.3",
+      },
+    },
+    "apps/claude-agent": {
+      "name": "@claude-agent/app",
+      "version": "1.0.0",
+      "bin": {
+        "claude-agent": "./dist/bin.js",
+      },
+      "dependencies": {
+        "@claude-agent/cli": "workspace:*",
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/http": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/pipeline": "workspace:*",
+        "@claude-agent/plugins": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/agent-communication": {
+      "name": "@claude-agent/agent-communication",
+      "version": "0.1.0",
+    },
+    "packages/ai-context": {
+      "name": "@claude-agent/ai-context",
+      "version": "0.1.0",
+    },
+    "packages/api-docs": {
+      "name": "@claude-agent/api-docs",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/api-gateway": {
+      "name": "@claude-agent/api-gateway",
+      "version": "0.1.0",
+    },
+    "packages/cli": {
+      "name": "@claude-agent/cli",
+      "version": "1.0.0",
+      "bin": {
+        "claude-agent": "./dist/bin.js",
+      },
+      "dependencies": {
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/http": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/orchestrator": "workspace:*",
+        "@claude-agent/pipeline": "workspace:*",
+        "@claude-agent/plugins": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/cli-enhanced": {
+      "name": "@claude-agent/cli-enhanced",
+      "version": "0.1.0",
+    },
+    "packages/code-metrics": {
+      "name": "@claude-agent/code-metrics",
+      "version": "0.1.0",
+    },
+    "packages/commands": {
+      "name": "@claude-agent/commands",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/config": {
+      "name": "@claude-agent/config",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+        "zod": "^3.23.0",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/config-center": {
+      "name": "@claude-agent/config-center",
+      "version": "0.1.0",
+    },
+    "packages/config-schema": {
+      "name": "@claude-agent/config-schema",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+        "zod": "^3.23.0",
+      },
+    },
+    "packages/config-wizard": {
+      "name": "@claude-agent/config-wizard",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/continuous-scheduler": {
+      "name": "@claude-agent/continuous-scheduler",
+      "version": "0.1.0",
+    },
+    "packages/core": {
+      "name": "@claude-agent/core",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/data-pipeline": {
+      "name": "@claude-agent/data-pipeline",
+      "version": "0.1.0",
+    },
+    "packages/decorators": {
+      "name": "@claude-agent/decorators",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/logger": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/dev-tools": {
+      "name": "@claude-agent/dev-tools",
+      "version": "0.1.0",
+    },
+    "packages/diagnostics": {
+      "name": "@claude-agent/diagnostics",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/domain-events": {
+      "name": "@claude-agent/domain-events",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/errors": {
+      "name": "@claude-agent/errors",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/event-sourcing": {
+      "name": "@claude-agent/event-sourcing",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/examples": {
+      "name": "@claude-agent/examples",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/exporter": {
+      "name": "@claude-agent/exporter",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/http": {
+      "name": "@claude-agent/http",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/i18n": {
+      "name": "@claude-agent/i18n",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/logger": {
+      "name": "@claude-agent/logger",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/middleware": {
+      "name": "@claude-agent/middleware",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/notification": {
+      "name": "@claude-agent/notification",
+      "version": "0.1.0",
+    },
+    "packages/observer": {
+      "name": "@claude-agent/observer",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/logger": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/orchestrator": {
+      "name": "@claude-agent/orchestrator",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/perf": {
+      "name": "@claude-agent/perf",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/persistent-runtime": {
+      "name": "@claude-agent/persistent-runtime",
+      "version": "0.1.0",
+    },
+    "packages/pipeline": {
+      "name": "@claude-agent/pipeline",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/plugin-registry": {
+      "name": "@claude-agent/plugin-registry",
+      "version": "0.1.0",
+    },
+    "packages/plugins": {
+      "name": "@claude-agent/plugins",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/config": "workspace:*",
+        "@claude-agent/core": "workspace:*",
+        "@claude-agent/errors": "workspace:*",
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/repl": {
+      "name": "@claude-agent/repl",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/repository": {
+      "name": "@claude-agent/repository",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/logger": "workspace:*",
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/resilience": {
+      "name": "@claude-agent/resilience",
+      "version": "0.1.0",
+    },
+    "packages/security": {
+      "name": "@claude-agent/security",
+      "version": "0.1.0",
+    },
+    "packages/self-healing": {
+      "name": "@claude-agent/self-healing",
+      "version": "0.1.0",
+    },
+    "packages/shell-completions": {
+      "name": "@claude-agent/shell-completions",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/smart-scheduler": {
+      "name": "@claude-agent/smart-scheduler",
+      "version": "0.1.0",
+    },
+    "packages/specification": {
+      "name": "@claude-agent/specification",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/types": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/storage": {
+      "name": "@claude-agent/storage",
+      "version": "0.1.0",
+    },
+    "packages/strategy": {
+      "name": "@claude-agent/strategy",
+      "version": "1.0.0",
+      "dependencies": {
+        "@claude-agent/logger": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/themes": {
+      "name": "@claude-agent/themes",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/types": {
+      "name": "@claude-agent/types",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/update-checker": {
+      "name": "@claude-agent/update-checker",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/workflow": {
+      "name": "@claude-agent/workflow",
+      "version": "0.1.0",
+    },
+  },
+  "packages": {
+    "@claude-agent/agent-communication": ["@claude-agent/agent-communication@workspace:packages/agent-communication"],
+
+    "@claude-agent/ai-context": ["@claude-agent/ai-context@workspace:packages/ai-context"],
+
+    "@claude-agent/api-docs": ["@claude-agent/api-docs@workspace:packages/api-docs"],
+
+    "@claude-agent/api-gateway": ["@claude-agent/api-gateway@workspace:packages/api-gateway"],
+
+    "@claude-agent/app": ["@claude-agent/app@workspace:apps/claude-agent"],
+
+    "@claude-agent/cli": ["@claude-agent/cli@workspace:packages/cli"],
+
+    "@claude-agent/cli-enhanced": ["@claude-agent/cli-enhanced@workspace:packages/cli-enhanced"],
+
+    "@claude-agent/code-metrics": ["@claude-agent/code-metrics@workspace:packages/code-metrics"],
+
+    "@claude-agent/commands": ["@claude-agent/commands@workspace:packages/commands"],
+
+    "@claude-agent/config": ["@claude-agent/config@workspace:packages/config"],
+
+    "@claude-agent/config-center": ["@claude-agent/config-center@workspace:packages/config-center"],
+
+    "@claude-agent/config-schema": ["@claude-agent/config-schema@workspace:packages/config-schema"],
+
+    "@claude-agent/config-wizard": ["@claude-agent/config-wizard@workspace:packages/config-wizard"],
+
+    "@claude-agent/continuous-scheduler": ["@claude-agent/continuous-scheduler@workspace:packages/continuous-scheduler"],
+
+    "@claude-agent/core": ["@claude-agent/core@workspace:packages/core"],
+
+    "@claude-agent/data-pipeline": ["@claude-agent/data-pipeline@workspace:packages/data-pipeline"],
+
+    "@claude-agent/decorators": ["@claude-agent/decorators@workspace:packages/decorators"],
+
+    "@claude-agent/dev-tools": ["@claude-agent/dev-tools@workspace:packages/dev-tools"],
+
+    "@claude-agent/diagnostics": ["@claude-agent/diagnostics@workspace:packages/diagnostics"],
+
+    "@claude-agent/domain-events": ["@claude-agent/domain-events@workspace:packages/domain-events"],
+
+    "@claude-agent/errors": ["@claude-agent/errors@workspace:packages/errors"],
+
+    "@claude-agent/event-sourcing": ["@claude-agent/event-sourcing@workspace:packages/event-sourcing"],
+
+    "@claude-agent/examples": ["@claude-agent/examples@workspace:packages/examples"],
+
+    "@claude-agent/exporter": ["@claude-agent/exporter@workspace:packages/exporter"],
+
+    "@claude-agent/http": ["@claude-agent/http@workspace:packages/http"],
+
+    "@claude-agent/i18n": ["@claude-agent/i18n@workspace:packages/i18n"],
+
+    "@claude-agent/logger": ["@claude-agent/logger@workspace:packages/logger"],
+
+    "@claude-agent/middleware": ["@claude-agent/middleware@workspace:packages/middleware"],
+
+    "@claude-agent/notification": ["@claude-agent/notification@workspace:packages/notification"],
+
+    "@claude-agent/observer": ["@claude-agent/observer@workspace:packages/observer"],
+
+    "@claude-agent/orchestrator": ["@claude-agent/orchestrator@workspace:packages/orchestrator"],
+
+    "@claude-agent/perf": ["@claude-agent/perf@workspace:packages/perf"],
+
+    "@claude-agent/persistent-runtime": ["@claude-agent/persistent-runtime@workspace:packages/persistent-runtime"],
+
+    "@claude-agent/pipeline": ["@claude-agent/pipeline@workspace:packages/pipeline"],
+
+    "@claude-agent/plugin-registry": ["@claude-agent/plugin-registry@workspace:packages/plugin-registry"],
+
+    "@claude-agent/plugins": ["@claude-agent/plugins@workspace:packages/plugins"],
+
+    "@claude-agent/repl": ["@claude-agent/repl@workspace:packages/repl"],
+
+    "@claude-agent/repository": ["@claude-agent/repository@workspace:packages/repository"],
+
+    "@claude-agent/resilience": ["@claude-agent/resilience@workspace:packages/resilience"],
+
+    "@claude-agent/security": ["@claude-agent/security@workspace:packages/security"],
+
+    "@claude-agent/self-healing": ["@claude-agent/self-healing@workspace:packages/self-healing"],
+
+    "@claude-agent/shell-completions": ["@claude-agent/shell-completions@workspace:packages/shell-completions"],
+
+    "@claude-agent/smart-scheduler": ["@claude-agent/smart-scheduler@workspace:packages/smart-scheduler"],
+
+    "@claude-agent/specification": ["@claude-agent/specification@workspace:packages/specification"],
+
+    "@claude-agent/storage": ["@claude-agent/storage@workspace:packages/storage"],
+
+    "@claude-agent/strategy": ["@claude-agent/strategy@workspace:packages/strategy"],
+
+    "@claude-agent/themes": ["@claude-agent/themes@workspace:packages/themes"],
+
+    "@claude-agent/types": ["@claude-agent/types@workspace:packages/types"],
+
+    "@claude-agent/update-checker": ["@claude-agent/update-checker@workspace:packages/update-checker"],
+
+    "@claude-agent/workflow": ["@claude-agent/workflow@workspace:packages/workflow"],
+
+    "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
+
+    "@types/node": ["@types/node@25.8.0", "", { "dependencies": { "undici-types": ">=7.24.0 <7.24.7" } }, "sha512-TCFSk8IZh+iLX1xtksoBVtdmgL+1IX0fC9BeU4QqFSuNdN/K+HUlhqOzEmSYYpZUVsLYcPqc9KX+60iDuninSQ=="],
+
+    "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "undici-types": ["undici-types@7.24.6", "", {}, "sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg=="],
+
+    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+
+    "@claude-agent/config/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "@claude-agent/config-schema/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+  }
+}

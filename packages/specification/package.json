@@ -1,0 +1,18 @@
+{
+  "name": "@claude-agent/specification",
+  "version": "1.0.0",
+  "description": "Specification pattern with composable queries, filtering, pagination, and sorting",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

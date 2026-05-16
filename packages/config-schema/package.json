@@ -1,0 +1,20 @@
+{
+  "name": "@claude-agent/config-schema",
+  "version": "1.0.0",
+  "description": "Unified configuration schema with validation and documentation",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*",
+    "@claude-agent/errors": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "zod": "^3.23.0"
+  }
+}

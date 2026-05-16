@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@claude-agent/types": ["../types/src"],
+      "@claude-agent/errors": ["../errors/src"],
+      "@claude-agent/logger": ["../logger/src"],
+      "@claude-agent/config": ["../config/src"],
+      "@claude-agent/core": ["../core/src"],
+      "@claude-agent/pipeline": ["../pipeline/src"],
+      "@claude-agent/plugins": ["../plugins/src"],
+      "@claude-agent/http": ["../http/src"],
+      "@claude-agent/orchestrator": ["../orchestrator/src"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../logger" },
+    { "path": "../config" },
+    { "path": "../core" },
+    { "path": "../pipeline" },
+    { "path": "../plugins" },
+    { "path": "../http" },
+    { "path": "../orchestrator" }
+  ]
+}

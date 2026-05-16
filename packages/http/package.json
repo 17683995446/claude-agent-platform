@@ -1,0 +1,27 @@
+{
+  "name": "@claude-agent/http",
+  "version": "1.0.0",
+  "description": "HTTP health check endpoints for Claude Agent Platform",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*",
+    "@claude-agent/errors": "workspace:*",
+    "@claude-agent/logger": "workspace:*",
+    "@claude-agent/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

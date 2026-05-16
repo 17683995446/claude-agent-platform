@@ -1,0 +1,20 @@
+{
+  "name": "@claude-agent/event-sourcing",
+  "version": "1.0.0",
+  "description": "Event sourcing with event store, replay, snapshots, and projections",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*",
+    "@claude-agent/errors": "workspace:*",
+    "@claude-agent/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

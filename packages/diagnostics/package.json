@@ -1,0 +1,16 @@
+{
+  "name": "@claude-agent/diagnostics",
+  "version": "1.0.0",
+  "description": "Environment diagnostics, dependency checks, performance profiling, and config validation",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@claude-agent/perf",
+  "version": "1.0.0",
+  "description": "Performance optimization and memory management for Claude Agent Platform",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "bun test src/**/*.test.ts",
+    "bench": "bun test src/**/*.bench.ts"
+  },
+  "dependencies": {
+    "@claude-agent/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
