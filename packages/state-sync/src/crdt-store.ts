@@ -215,10 +215,12 @@ export class ORSet implements CRDTSet {
   }
 
   remove(value: unknown): void {
+    // Only remove the first matching entry by unique key, not all entries with matching value
     for (const [key, val] of this.elements) {
       if (JSON.stringify(val) === JSON.stringify(value)) {
         this.tombstones.add(key);
         this.elements.delete(key);
+        return; // Only remove one specific unique key
       }
     }
   }
@@ -357,14 +359,32 @@ export class LWWMap implements CRDTMap {
     for (const [key, entry] of this.entries) {
       result[key] = { value: structuredClone(entry.value), timestamp: entry.timestamp, node: entry.node };
     }
+    // Include deleted keys with a special marker
+    for (const [key, entry] of this.deletedKeys) {
+      result[key] = { value: undefined, timestamp: entry.timestamp, node: entry.node, _deleted: true } as any;
+    }
     return result;
   }
 
   merge(state: Record<string, { value: unknown; timestamp: number; node: string }>): void {
     for (const [key, remoteEntry] of Object.entries(state)) {
-      const local = this.entries.get(key);
-      if (!local || remoteEntry.timestamp > local.timestamp || (remoteEntry.timestamp === local.timestamp && remoteEntry.node > local.node)) {
-        this.entries.set(key, { value: structuredClone(remoteEntry.value), timestamp: remoteEntry.timestamp, node: remoteEntry.node });
+      const isDeleted = (remoteEntry as any)._deleted === true;
+      if (isDeleted) {
+        // Process deleted key from remote
+        const localEntry = this.entries.get(key);
+        const localDeleted = this.deletedKeys.get(key);
+        const localTs = localEntry ? localEntry.timestamp : 0;
+        const localDeletedTs = localDeleted ? localDeleted.timestamp : 0;
+        if (remoteEntry.timestamp > localTs && remoteEntry.timestamp > localDeletedTs) {
+          this.entries.delete(key);
+          this.deletedKeys.set(key, { timestamp: remoteEntry.timestamp, node: remoteEntry.node });
+        }
+      } else {
+        const local = this.entries.get(key);
+        if (!local || remoteEntry.timestamp > local.timestamp || (remoteEntry.timestamp === local.timestamp && remoteEntry.node > local.node)) {
+          this.entries.set(key, { value: structuredClone(remoteEntry.value), timestamp: remoteEntry.timestamp, node: remoteEntry.node });
+          this.deletedKeys.delete(key);
+        }
       }
     }
   }

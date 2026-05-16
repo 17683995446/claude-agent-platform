@@ -108,6 +108,23 @@ export class ReplicationManager {
     this.stats.totalReplications++;
 
     const aliveNodes = Array.from(this.nodes.values()).filter((n) => n.isAlive);
+    const requiredQuorum = Math.ceil(this.replicationFactor / 2);
+
+    // Fail early if not enough alive nodes to achieve quorum
+    if (aliveNodes.length < requiredQuorum) {
+      const duration = Date.now() - startTime;
+      this.stats.failedReplications++;
+      this.stats.lastReplicationTime = Date.now();
+      return {
+        success: false,
+        replicatedTo: [],
+        failedNodes: aliveNodes.map((n) => n.nodeId),
+        replicationFactor: this.replicationFactor,
+        achieved: 0,
+        duration,
+      };
+    }
+
     const targetCount = Math.min(this.replicationFactor, aliveNodes.length);
     const targets = aliveNodes.slice(0, targetCount);
 

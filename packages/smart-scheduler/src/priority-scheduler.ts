@@ -54,11 +54,16 @@ export class PriorityScheduler {
 
     let priority = task.priority ?? Priority.Normal;
 
+    // Validate priority is a finite number
+    if (!Number.isFinite(priority)) {
+      priority = Priority.Normal;
+    }
+
     // Priority inheritance: child tasks inherit parent priority
     if (task.parentId) {
       const parentEntry = this.taskMap.get(task.parentId);
       if (parentEntry) {
-        priority = Math.min(priority, parentEntry.task.priority);
+        priority = Math.max(priority, parentEntry.task.priority);
       }
     }
 

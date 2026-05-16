@@ -137,7 +137,10 @@ export class PipelineBuilder<T> {
           try {
             result = await stage.transform(result);
           } catch (e) {
-            if (e instanceof FilterSkipError) continue;
+            if (e instanceof FilterSkipError) {
+              // Data was filtered out - skip remaining stages
+              return undefined as T;
+            }
             throw e;
           }
         }

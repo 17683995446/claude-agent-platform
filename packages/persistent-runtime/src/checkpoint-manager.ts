@@ -78,7 +78,7 @@ export class CheckpointManager {
   createCheckpoint(label?: string, state?: unknown): Checkpoint {
     const id = this.generateId();
     const data = state ?? this.lastStateHash;
-    const serialized = JSON.stringify(data);
+    const serialized = this.safeStringify(data);
     const hash = this.computeHash(serialized);
     const size = new TextEncoder().encode(serialized).length;
 
@@ -119,7 +119,7 @@ export class CheckpointManager {
     }
 
     // Verify integrity
-    const serialized = JSON.stringify(checkpoint.data);
+    const serialized = this.safeStringify(checkpoint.data);
     const hash = this.computeHash(serialized);
     if (hash !== checkpoint.hash) {
       return {
@@ -269,5 +269,20 @@ export class CheckpointManager {
       hash = hash & hash; // Convert to 32-bit integer
     }
     return `hash_${Math.abs(hash).toString(16)}`;
+  }
+
+  private safeStringify(data: unknown): string {
+    const seen = new WeakSet();
+    try {
+      return JSON.stringify(data, (_key, value) => {
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) return '[Circular]';
+          seen.add(value);
+        }
+        return value;
+      });
+    } catch {
+      return JSON.stringify(String(data));
+    }
   }
 }

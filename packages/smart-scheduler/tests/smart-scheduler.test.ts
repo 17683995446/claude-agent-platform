@@ -100,11 +100,20 @@ describe('PriorityScheduler', () => {
     expect(scheduler.peek()).toBeUndefined();
   });
 
-  test('child tasks inherit parent priority', () => {
+  test('child tasks inherit parent lower priority (higher number)', () => {
     const parentId = scheduler.schedule({ name: 'parent', priority: Priority.Critical });
     const childId = scheduler.schedule({ name: 'child', priority: Priority.Low, parentId });
     const child = scheduler.getTask(childId);
-    expect(child?.priority).toBe(Priority.Critical);
+    // Child should keep its own lower priority (higher number), not be boosted to parent's priority
+    expect(child?.priority).toBe(Priority.Low);
+  });
+
+  test('child tasks inherit parent priority when child has higher priority', () => {
+    const parentId = scheduler.schedule({ name: 'parent', priority: Priority.Low });
+    const childId = scheduler.schedule({ name: 'child', priority: Priority.Critical, parentId });
+    const child = scheduler.getTask(childId);
+    // Child should be demoted to parent's lower priority (higher number)
+    expect(child?.priority).toBe(Priority.Low);
   });
 
   test('deadline proximity boosts priority', () => {

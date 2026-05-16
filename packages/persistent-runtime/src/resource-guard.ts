@@ -87,6 +87,21 @@ export class ResourceGuard {
 
   reserve(resources: ResourceRequest): Reservation {
     const id = `res_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    // Validate available memory against tracked reservations
+    if (resources.memory && resources.memory > 0) {
+      const mem = this.getMemoryUsage();
+      const availableMemory = mem.total - mem.used;
+      if (resources.memory > availableMemory) {
+        // Warn about over-reservation but allow it (soft limit)
+        const action = `Over-reservation warning: requested ${resources.memory} bytes but only ${availableMemory} bytes available`;
+        this.actions.push(action);
+        if (this.onWarning) {
+          this.onWarning('memory', this.reservedMemory + resources.memory);
+        }
+      }
+    }
+
     const reservation: Reservation = {
       id,
       resources,

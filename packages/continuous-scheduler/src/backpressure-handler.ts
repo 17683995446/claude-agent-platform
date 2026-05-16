@@ -133,7 +133,7 @@ export class BackpressureHandler {
   }
 
   setQueueDepth(depth: number): void {
-    this.queueDepth = depth;
+    this.queueDepth = Math.max(0, depth);
     // Directly set level based on queue depth
     if (depth >= this.config.criticalThreshold) {
       this.currentLevel = 'critical';

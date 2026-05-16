@@ -135,6 +135,9 @@ export class ConfigStore {
    * 获取配置值，支持点号路径
    */
   get(path: string): unknown {
+    if (path === '') {
+      return { ...this.data };
+    }
     return getByPath(this.data, path);
   }
 

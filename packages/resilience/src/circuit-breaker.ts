@@ -155,7 +155,8 @@ export class CircuitBreaker {
       this.pruneWindow();
 
       if (this.config.windowType === 'count') {
-        if (this.windowFailures.length >= this.config.windowSize) {
+        // Use failureThreshold as the trip point; windowSize limits the sliding window
+        if (this.windowFailures.length >= this.config.failureThreshold) {
           this.transitionTo('open');
         }
       } else {
