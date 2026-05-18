@@ -209,8 +209,33 @@ export class WorkflowEngine {
           // Move to next step
           if (step.next.length === 0) {
             currentStepId = null;
-          } else {
+          } else if (step.next.length === 1) {
             currentStepId = step.next[0];
+          } else {
+            // Multiple branches: execute all in parallel
+            const branchResults = await Promise.allSettled(
+              step.next.map(async (nextStepId) => {
+                const nextStep = stepMap.get(nextStepId);
+                if (!nextStep) return;
+                const branchOutput = await this.executeStepWithRetry(nextStep, instance.variables);
+                instance.history.push({
+                  stepId: nextStepId,
+                  status: 'completed',
+                  timestamp: new Date(),
+                  output: branchOutput,
+                });
+                visited.add(nextStepId);
+              })
+            );
+            // Check if any branch failed
+            const failures = branchResults.filter(r => r.status === 'rejected');
+            if (failures.length > 0 && step.next.length === failures.length) {
+              // All branches failed
+              instance.status = 'failed';
+              instance.completedAt = new Date();
+              return { success: false, instanceId, error: 'All branches failed', duration: Date.now() - startTime };
+            }
+            currentStepId = null; // Branching completes the current path
           }
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err);

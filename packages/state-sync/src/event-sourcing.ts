@@ -41,9 +41,16 @@ export class EventSourcedStore {
     stream.push(versionedEvent);
     this.eventStreams.set(event.aggregateId, stream);
 
-    // Notify projectors
-    for (const projector of this.projectors.values()) {
-      projector(versionedEvent);
+    // Notify projectors (catch errors to prevent event storage from being affected)
+    for (const [name, projector] of this.projectors) {
+      try {
+        projector(versionedEvent);
+      } catch (err) {
+        // Log projector error but don't fail the append
+        // In production this would use a proper logger
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`Projector "${name}" error on event ${versionedEvent.eventId}: ${errorMsg}`);
+      }
     }
   }
 

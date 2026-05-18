@@ -108,7 +108,16 @@ export class ReplicationManager {
     this.stats.totalReplications++;
 
     const aliveNodes = Array.from(this.nodes.values()).filter((n) => n.isAlive);
-    const requiredQuorum = Math.ceil(this.replicationFactor / 2);
+
+    // Use writeQuorumDefault if set, otherwise calculate from replicationFactor
+    let requiredQuorum: number;
+    if (this.writeQuorumDefault.type === 'all') {
+      requiredQuorum = this.replicationFactor;
+    } else if (this.writeQuorumDefault.type === 'one') {
+      requiredQuorum = 1;
+    } else {
+      requiredQuorum = Math.ceil(this.replicationFactor / 2);
+    }
 
     // Fail early if not enough alive nodes to achieve quorum
     if (aliveNodes.length < requiredQuorum) {
@@ -137,7 +146,7 @@ export class ReplicationManager {
       replicatedTo.push(node.nodeId);
     }
 
-    const success = replicatedTo.length >= Math.ceil((this.replicationFactor) / 2);
+    const success = replicatedTo.length >= requiredQuorum;
     const duration = Date.now() - startTime;
 
     if (success) {

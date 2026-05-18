@@ -50,6 +50,18 @@
       "name": "@claude-agent/api-gateway",
       "version": "0.1.0",
     },
+    "packages/app-core": {
+      "name": "@claude-agent/app-core",
+      "version": "0.1.0",
+    },
+    "packages/auto-fix-engine": {
+      "name": "@claude-agent/auto-fix-engine",
+      "version": "1.0.0",
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/cli": {
       "name": "@claude-agent/cli",
       "version": "1.0.0",
@@ -148,6 +160,10 @@
       "name": "@claude-agent/data-pipeline",
       "version": "0.1.0",
     },
+    "packages/db-layer": {
+      "name": "@claude-agent/db-layer",
+      "version": "0.1.0",
+    },
     "packages/decorators": {
       "name": "@claude-agent/decorators",
       "version": "1.0.0",
@@ -235,6 +251,18 @@
       "devDependencies": {
         "typescript": "^5.6.0",
       },
+    },
+    "packages/knowledge-graph": {
+      "name": "@claude-agent/knowledge-graph",
+      "version": "1.0.0",
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
+    "packages/llm-integration": {
+      "name": "@claude-agent/llm-integration",
+      "version": "0.1.0",
     },
     "packages/logger": {
       "name": "@claude-agent/logger",
@@ -373,6 +401,14 @@
         "typescript": "^5.6.0",
       },
     },
+    "packages/smart-code-analyzer": {
+      "name": "@claude-agent/smart-code-analyzer",
+      "version": "1.0.0",
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/smart-scheduler": {
       "name": "@claude-agent/smart-scheduler",
       "version": "0.1.0",
@@ -442,6 +478,10 @@
 
     "@claude-agent/app": ["@claude-agent/app@workspace:apps/claude-agent"],
 
+    "@claude-agent/app-core": ["@claude-agent/app-core@workspace:packages/app-core"],
+
+    "@claude-agent/auto-fix-engine": ["@claude-agent/auto-fix-engine@workspace:packages/auto-fix-engine"],
+
     "@claude-agent/cli": ["@claude-agent/cli@workspace:packages/cli"],
 
     "@claude-agent/cli-enhanced": ["@claude-agent/cli-enhanced@workspace:packages/cli-enhanced"],
@@ -464,6 +504,8 @@
 
     "@claude-agent/data-pipeline": ["@claude-agent/data-pipeline@workspace:packages/data-pipeline"],
 
+    "@claude-agent/db-layer": ["@claude-agent/db-layer@workspace:packages/db-layer"],
+
     "@claude-agent/decorators": ["@claude-agent/decorators@workspace:packages/decorators"],
 
     "@claude-agent/dev-tools": ["@claude-agent/dev-tools@workspace:packages/dev-tools"],
@@ -483,6 +525,10 @@
     "@claude-agent/http": ["@claude-agent/http@workspace:packages/http"],
 
     "@claude-agent/i18n": ["@claude-agent/i18n@workspace:packages/i18n"],
+
+    "@claude-agent/knowledge-graph": ["@claude-agent/knowledge-graph@workspace:packages/knowledge-graph"],
+
+    "@claude-agent/llm-integration": ["@claude-agent/llm-integration@workspace:packages/llm-integration"],
 
     "@claude-agent/logger": ["@claude-agent/logger@workspace:packages/logger"],
 
@@ -517,6 +563,8 @@
     "@claude-agent/self-healing": ["@claude-agent/self-healing@workspace:packages/self-healing"],
 
     "@claude-agent/shell-completions": ["@claude-agent/shell-completions@workspace:packages/shell-completions"],
+
+    "@claude-agent/smart-code-analyzer": ["@claude-agent/smart-code-analyzer@workspace:packages/smart-code-analyzer"],
 
     "@claude-agent/smart-scheduler": ["@claude-agent/smart-scheduler@workspace:packages/smart-scheduler"],
 

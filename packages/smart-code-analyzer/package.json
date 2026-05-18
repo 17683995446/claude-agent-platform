@@ -1,0 +1,29 @@
+{
+  "name": "@claude-agent/smart-code-analyzer",
+  "version": "1.0.0",
+  "description": "Intelligent code analysis toolkit for TypeScript/JavaScript projects",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "code-analysis",
+    "ast",
+    "code-quality",
+    "security",
+    "metrics",
+    "mutation-testing"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  }
+}

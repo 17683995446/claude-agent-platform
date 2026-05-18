@@ -1,7 +1,7 @@
 // ============================================================================
 // Tests for @claude-agent/exporter
 // ============================================================================
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { Exporter } from '../packages/exporter/src/index.js';
 
 describe('@claude-agent/exporter', () => {

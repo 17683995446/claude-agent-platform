@@ -968,6 +968,11 @@ describe('EnhancedCircuitBreaker', () => {
     }
     expect(breaker.getState()).toBe('open');
     vi.advanceTimersByTime(1100);
+    // getState() no longer transitions state; it returns 'open'
+    expect(breaker.getState()).toBe('open');
+    // execute() triggers the transition internally via checkStateTransition()
+    await breaker.execute(async () => 'ok');
+    // After successful execute, state should be half-open (1 success, need 2 to close)
     expect(breaker.getState()).toBe('half-open');
     vi.useRealTimers();
   });
@@ -978,7 +983,10 @@ describe('EnhancedCircuitBreaker', () => {
       try { await breaker.execute(async () => { throw new Error('fail'); }); } catch { /* */ }
     }
     vi.advanceTimersByTime(1100);
+    // getState() returns 'open'; execute() triggers transition to half-open
+    expect(breaker.getState()).toBe('open');
     await breaker.execute(async () => 'ok');
+    expect(breaker.getState()).toBe('half-open');
     await breaker.execute(async () => 'ok');
     expect(breaker.getState()).toBe('closed');
     vi.useRealTimers();
@@ -990,6 +998,8 @@ describe('EnhancedCircuitBreaker', () => {
       try { await breaker.execute(async () => { throw new Error('fail'); }); } catch { /* */ }
     }
     vi.advanceTimersByTime(1100);
+    // getState() returns 'open'; execute() triggers transition to half-open
+    expect(breaker.getState()).toBe('open');
     try { await breaker.execute(async () => { throw new Error('fail'); }); } catch { /* */ }
     expect(breaker.getState()).toBe('open');
     vi.useRealTimers();

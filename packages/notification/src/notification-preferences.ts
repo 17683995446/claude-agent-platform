@@ -123,19 +123,22 @@ export class NotificationPreferences {
     return true;
   }
 
-  isQuietHours(userId: string): boolean {
+  isQuietHours(userId: string, now: Date = new Date()): boolean {
     const prefs = this.getPreferences(userId);
     if (!prefs.quietHours.enabled) return false;
 
-    const now = new Date();
     const currentHour = now.getHours();
+    const { startHour, endHour } = prefs.quietHours;
 
-    if (prefs.quietHours.startHour > prefs.quietHours.endHour) {
+    if (startHour > endHour) {
       // Spans midnight (e.g., 22:00 - 08:00)
-      return currentHour >= prefs.quietHours.startHour || currentHour < prefs.quietHours.endHour;
+      return currentHour >= startHour || currentHour < endHour;
+    } else if (startHour === 0 && endHour === 23) {
+      // Full day quiet hours
+      return true;
     } else {
-      // Same day (e.g., 12:00 - 14:00)
-      return currentHour >= prefs.quietHours.startHour && currentHour < prefs.quietHours.endHour;
+      // Same day range (e.g., 12:00 - 14:00), endHour is exclusive
+      return currentHour >= startHour && currentHour < endHour;
     }
   }
 

@@ -39,6 +39,7 @@ export class EnhancedCircuitBreaker {
   private totalCalls = 0;
   private callHistory: CallRecord[] = [];
   private halfOpenCalls = 0;
+  private halfOpenSuccesses = 0;
   private tripCount = 0;
   private lastFailureTime: number | null = null;
   private lastSuccessTime: number | null = null;
@@ -60,12 +61,10 @@ export class EnhancedCircuitBreaker {
   }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
+    this.checkStateTransition();
+
     if (this.state === 'open') {
-      if (this.openSince && Date.now() - this.openSince >= this.config.recoveryTimeout) {
-        this.transitionTo('half-open');
-      } else {
-        throw new Error('Circuit breaker is open');
-      }
+      throw new Error('Circuit breaker is open');
     }
 
     if (this.state === 'half-open' && this.halfOpenCalls >= this.config.halfOpenMaxCalls) {
@@ -90,13 +89,16 @@ export class EnhancedCircuitBreaker {
   }
 
   getState(): CircuitState {
-    // Check if open circuit should transition to half-open
+    return this.state;
+  }
+
+  /** Check and transition state if needed (called internally before execute) */
+  private checkStateTransition(): void {
     if (this.state === 'open' && this.openSince) {
       if (Date.now() - this.openSince >= this.config.recoveryTimeout) {
         this.transitionTo('half-open');
       }
     }
-    return this.state;
   }
 
   getDiagnostics(): CircuitDiagnostics {
@@ -163,6 +165,7 @@ export class EnhancedCircuitBreaker {
     this.successCount = 0;
     this.totalCalls = 0;
     this.halfOpenCalls = 0;
+    this.halfOpenSuccesses = 0;
     this.tripCount = 0;
     this.lastFailureTime = null;
     this.lastSuccessTime = null;
@@ -178,8 +181,9 @@ export class EnhancedCircuitBreaker {
     this.callHistory.push({ success: true, timestamp: Date.now(), duration });
 
     if (this.state === 'half-open') {
+      this.halfOpenSuccesses++;
       // If enough successful calls in half-open, close the circuit
-      if (this.halfOpenCalls >= this.config.halfOpenMaxCalls) {
+      if (this.halfOpenSuccesses >= this.config.halfOpenMaxCalls) {
         this.transitionTo('closed');
       }
     }
@@ -226,11 +230,14 @@ export class EnhancedCircuitBreaker {
       this.openSince = Date.now();
       this.tripCount++;
       this.halfOpenCalls = 0;
+      this.halfOpenSuccesses = 0;
     } else if (newState === 'half-open') {
       this.halfOpenCalls = 0;
+      this.halfOpenSuccesses = 0;
     } else if (newState === 'closed') {
       this.failureCount = 0;
       this.halfOpenCalls = 0;
+      this.halfOpenSuccesses = 0;
       this.openSince = null;
     }
 
