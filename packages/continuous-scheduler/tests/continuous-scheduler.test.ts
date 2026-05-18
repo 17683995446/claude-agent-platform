@@ -1636,25 +1636,29 @@ describe('SchedulingAnalytics', () => {
 
   test('should detect throughput trend', () => {
     const now = Date.now();
-    // Older period: fewer completions
+    const windowMs = 5 * 60 * 1000; // 5 minutes
+    
+    // Previous window (5-10 minutes ago): 5 completions
     for (let i = 0; i < 5; i++) {
       analytics.recordEvent({
         type: 'task_completed',
-        timestamp: now - 600000 - i * 10000,
+        timestamp: now - windowMs - 1000 - i * 100, // Just before current window
         taskId: `old-${i}`,
         duration: 100,
       });
     }
-    // Recent period: more completions
+    // Current window (0-5 minutes ago): 20 completions
     for (let i = 0; i < 20; i++) {
       analytics.recordEvent({
         type: 'task_completed',
-        timestamp: now - i * 5000,
+        timestamp: now - 1000 - i * 100, // Within current window
         taskId: `new-${i}`,
         duration: 100,
       });
     }
     const throughput = analytics.getThroughput('5m');
+    // With 20 current vs 5 previous, change is 300% (>10% threshold)
+    expect(throughput.tasksCompleted).toBe(20);
     expect(throughput.trend).toBe('increasing');
   });
 
