@@ -453,6 +453,14 @@
         "typescript": "^5.6.0",
       },
     },
+    "packages/stream-processing": {
+      "name": "@claude-agent/stream-processing",
+      "version": "0.1.0",
+    },
+    "packages/task-queue": {
+      "name": "@claude-agent/task-queue",
+      "version": "0.1.0",
+    },
     "packages/test-utils": {
       "name": "@claude-agent/test-utils",
       "version": "0.1.0",
@@ -481,6 +489,10 @@
       "devDependencies": {
         "typescript": "^5.6.0",
       },
+    },
+    "packages/vector-store": {
+      "name": "@claude-agent/vector-store",
+      "version": "0.1.0",
     },
     "packages/workflow": {
       "name": "@claude-agent/workflow",
@@ -600,6 +612,10 @@
 
     "@claude-agent/strategy": ["@claude-agent/strategy@workspace:packages/strategy"],
 
+    "@claude-agent/stream-processing": ["@claude-agent/stream-processing@workspace:packages/stream-processing"],
+
+    "@claude-agent/task-queue": ["@claude-agent/task-queue@workspace:packages/task-queue"],
+
     "@claude-agent/test-utils": ["@claude-agent/test-utils@workspace:packages/test-utils"],
 
     "@claude-agent/themes": ["@claude-agent/themes@workspace:packages/themes"],
@@ -607,6 +623,8 @@
     "@claude-agent/types": ["@claude-agent/types@workspace:packages/types"],
 
     "@claude-agent/update-checker": ["@claude-agent/update-checker@workspace:packages/update-checker"],
+
+    "@claude-agent/vector-store": ["@claude-agent/vector-store@workspace:packages/vector-store"],
 
     "@claude-agent/workflow": ["@claude-agent/workflow@workspace:packages/workflow"],
 
