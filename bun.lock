@@ -35,6 +35,10 @@
       "name": "@claude-agent/agent-communication",
       "version": "0.1.0",
     },
+    "packages/agent-memory": {
+      "name": "@claude-agent/agent-memory",
+      "version": "0.1.0",
+    },
     "packages/ai-context": {
       "name": "@claude-agent/ai-context",
       "version": "0.1.0",
@@ -43,6 +47,14 @@
       "name": "@claude-agent/api-docs",
       "version": "1.0.0",
       "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/api-docs-gen": {
+      "name": "@claude-agent/api-docs-gen",
+      "version": "1.0.0",
+      "devDependencies": {
+        "bun-types": "latest",
         "typescript": "^5.6.0",
       },
     },
@@ -441,6 +453,14 @@
         "typescript": "^5.6.0",
       },
     },
+    "packages/test-utils": {
+      "name": "@claude-agent/test-utils",
+      "version": "0.1.0",
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/themes": {
       "name": "@claude-agent/themes",
       "version": "1.0.0",
@@ -470,9 +490,13 @@
   "packages": {
     "@claude-agent/agent-communication": ["@claude-agent/agent-communication@workspace:packages/agent-communication"],
 
+    "@claude-agent/agent-memory": ["@claude-agent/agent-memory@workspace:packages/agent-memory"],
+
     "@claude-agent/ai-context": ["@claude-agent/ai-context@workspace:packages/ai-context"],
 
     "@claude-agent/api-docs": ["@claude-agent/api-docs@workspace:packages/api-docs"],
+
+    "@claude-agent/api-docs-gen": ["@claude-agent/api-docs-gen@workspace:packages/api-docs-gen"],
 
     "@claude-agent/api-gateway": ["@claude-agent/api-gateway@workspace:packages/api-gateway"],
 
@@ -575,6 +599,8 @@
     "@claude-agent/storage": ["@claude-agent/storage@workspace:packages/storage"],
 
     "@claude-agent/strategy": ["@claude-agent/strategy@workspace:packages/strategy"],
+
+    "@claude-agent/test-utils": ["@claude-agent/test-utils@workspace:packages/test-utils"],
 
     "@claude-agent/themes": ["@claude-agent/themes@workspace:packages/themes"],
 
