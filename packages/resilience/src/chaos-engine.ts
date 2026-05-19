@@ -69,9 +69,13 @@ export class ChaosEngine {
       const delay = fault.schedule.startTime - Date.now();
       if (delay > 0) {
         const timer = setTimeout(() => {
-          // Re-inject if it was removed
-          if (!this.activeFaults.has(fault.id)) {
-            this.injectFault(fault);
+          try {
+            // Re-inject if it was removed
+            if (!this.activeFaults.has(fault.id)) {
+              this.injectFault(fault);
+            }
+          } catch {
+            // Ignore re-injection errors (e.g., max concurrent faults reached)
           }
         }, delay);
         this.scheduleTimers.set(`schedule_${fault.id}`, timer);
@@ -158,7 +162,10 @@ export class ChaosEngine {
       case 'error':
         throw fault.errorFn?.() ?? new Error('Chaos: injected error');
       case 'timeout':
-        await new Promise(() => {}); // Never resolves
+        await new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Chaos: injected timeout')), 5000),
+        );
+        break;
       case 'resource_exhaustion':
         throw new Error('Chaos: resource exhaustion');
       case 'network_partition':

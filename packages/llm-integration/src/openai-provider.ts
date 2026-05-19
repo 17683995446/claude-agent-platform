@@ -202,7 +202,8 @@ export class OpenAIProvider implements LLMProvider {
         throw lastError;
       }
     }
-    throw lastError!;
+    // TypeScript needs this for exhaustiveness; the loop always throws or returns
+    throw lastError;
   }
 
   /** 发送聊天补全请求 */
@@ -289,7 +290,8 @@ export class OpenAIProvider implements LLMProvider {
       throw new Error(`OpenAI API error ${res.status}: ${errorText}`);
     }
 
-    const reader = res.body!.getReader();
+    if (!res.body) throw new Error('Response body is null');
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 

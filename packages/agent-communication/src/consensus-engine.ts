@@ -114,7 +114,7 @@ export class ConsensusEngine {
         const result = this.tallyVotes(fullProposal.id, algorithm ?? this.defaultAlgorithm);
         currentState.result = result;
         resolve(result);
-      }, Math.min(fullProposal.timeout, 100)); // Cap at 100ms for testing
+      }, fullProposal.timeout);
       this.proposalTimers.set(fullProposal.id, timer);
     });
   }
@@ -122,6 +122,10 @@ export class ConsensusEngine {
   vote(proposalId: string, agentId: string, vote: VoteType): void {
     const state = this.proposals.get(proposalId);
     if (!state || state.expired) return;
+
+    // COMM-32: Prevent double voting
+    const alreadyVoted = state.votes.some((v) => v.agentId === agentId);
+    if (alreadyVoted) return;
 
     const weight = this.agentWeights.get(agentId) ?? 1;
 
@@ -134,21 +138,43 @@ export class ConsensusEngine {
     };
     state.votes.push(voteRecord);
 
-    // Process delegations: find all agents that delegated to this agent
+    // COMM-20 & COMM-21: Process delegations with transitive resolution.
+    // When an agent votes, all agents that delegated to this agent (directly or transitively)
+    // also have their vote recorded with the same vote type. Each agent's own weight is used,
+    // so delegation transfers voting intent, not weight. This means the delegating agent's
+    // weight is counted independently (no duplicate weight).
+    const visited = new Set<string>([agentId]);
+    this.processDelegations(state, proposalId, agentId, vote, visited);
+  }
+
+  /**
+   * COMM-20: Walk the delegation chain transitively.
+   * COMM-21: Each delegating agent's own weight is used (no duplicate weight).
+   * Delegation only transfers the vote direction, not the delegator's weight to the delegate.
+   */
+  private processDelegations(
+    state: ConsensusState,
+    proposalId: string,
+    delegateAgentId: string,
+    vote: VoteType,
+    visited: Set<string>,
+  ): void {
     for (const [delegator, delegate] of this.voteDelegations.entries()) {
-      if (delegate === agentId && delegator !== agentId) {
-        // Check if delegator already voted
-        const alreadyVoted = state.votes.some((v) => v.agentId === delegator);
-        if (!alreadyVoted) {
+      if (delegate === delegateAgentId && !visited.has(delegator)) {
+        visited.add(delegator);
+        const delegatorAlreadyVoted = state.votes.some((v) => v.agentId === delegator);
+        if (!delegatorAlreadyVoted) {
           state.votes.push({
             proposalId,
             agentId: delegator,
             vote,
             weight: this.agentWeights.get(delegator) ?? 1,
             timestamp: Date.now(),
-            delegatedFrom: agentId,
+            delegatedFrom: delegateAgentId,
           });
         }
+        // COMM-20: Transitively resolve - check if this delegator also has delegators
+        this.processDelegations(state, proposalId, delegator, vote, visited);
       }
     }
   }

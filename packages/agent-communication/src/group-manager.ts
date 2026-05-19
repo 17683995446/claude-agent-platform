@@ -101,14 +101,42 @@ export class AgentGroupManager {
     if (!group) throw new Error(`Group ${groupId} not found`);
 
     if (agentId === group.leaderId) {
-      // Leader leaving - adjourn the group but keep it around
+      // COMM-24: Leader leaving - trigger re-election among remaining members
+      group.members.delete(agentId);
+      // COMM-25: Clean up handler
+      this.messageHandlers.delete(agentId);
+
+      if (group.members.size === 0) {
+        // No members left to elect, adjourn the group
+        group.phase = 'adjourning';
+        return;
+      }
+
+      // Elect new leader: pick the member who has been in the group the longest
+      let newLeader: string | null = null;
+      let earliestJoin = Infinity;
+      for (const [memberId, member] of group.members.entries()) {
+        if (member.joinedAt < earliestJoin) {
+          earliestJoin = member.joinedAt;
+          newLeader = memberId;
+        }
+      }
+      if (newLeader) {
+        group.leaderId = newLeader;
+        const newLeaderMember = group.members.get(newLeader)!;
+        newLeaderMember.role = 'leader';
+      }
+
+      // Set phase to adjourning to signal leadership transition
       group.phase = 'adjourning';
-    }
+    } else {
+      group.members.delete(agentId);
+      // COMM-25: Clean up message handler when agent leaves
+      this.messageHandlers.delete(agentId);
 
-    group.members.delete(agentId);
-
-    if (group.members.size === 0 && group.phase !== 'adjourning') {
-      this.groups.delete(groupId);
+      if (group.members.size === 0 && group.phase !== 'adjourning') {
+        this.groups.delete(groupId);
+      }
     }
   }
 

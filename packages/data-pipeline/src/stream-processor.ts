@@ -58,26 +58,27 @@ export class StreamProcessor<T> {
   }
 
   private async *processWithBackpressure(source: AsyncIterable<T>): AsyncIterable<T> {
-    const pending: Promise<T>[] = [];
+    const pending: Promise<{ _id: symbol; value: T }>[] = [];
 
     for await (const item of source) {
       if (this.activeCount >= this.maxConcurrency) {
         const result = await Promise.race(pending);
-        const idx = pending.indexOf(result as any);
+        const idx = pending.indexOf(result);
         if (idx >= 0) pending.splice(idx, 1);
         this.activeCount--;
-        yield result;
+        yield result.value;
       }
 
       this.activeCount++;
-      const promise = Promise.resolve(item);
+      const id = Symbol();
+      const promise = Promise.resolve({ _id: id, value: item });
       pending.push(promise);
     }
 
     // Drain remaining
     for (const promise of pending) {
       this.activeCount--;
-      yield await promise;
+      yield (await promise).value;
     }
   }
 
@@ -147,6 +148,8 @@ export class StreamProcessor<T> {
     let pendingItem: T | null = null;
     let resolveItem: ((value: T) => void) | null = null;
 
+    let done = false;
+
     const processSource = async () => {
       for await (const item of source) {
         pendingItem = item;
@@ -175,14 +178,22 @@ export class StreamProcessor<T> {
           }, delayMs);
         });
       }
+
+      done = true;
+      // Resolve the waiting promise so the while loop can exit
+      if (resolveItem) {
+        resolveItem(null as unknown as T);
+        resolveItem = null;
+      }
     };
 
     processSource();
 
-    while (true) {
+    while (!done) {
       const item = await new Promise<T>((resolve) => {
         resolveItem = resolve;
       });
+      if (done) break;
       yield item;
     }
   }

@@ -177,8 +177,16 @@ export class DependencyScanner {
 
   /**
    * Resolve dependencies from package.json
+   *
+   * SIMULATION NOTICE: This method does not actually read from the filesystem.
+   * It returns hardcoded mock data for demonstration purposes. In a production
+   * implementation, this would:
+   *   1. Read package.json from the projectPath
+   *   2. Parse dependencies and devDependencies
+   *   3. Recursively resolve the dependency tree
+   *   4. Fetch license information from each package
    */
-  private async resolveDependencies(projectPath: string): Promise<DependencyInfo[]> {
+  private async resolveDependencies(_projectPath: string): Promise<DependencyInfo[]> {
     // In a real implementation, this would read package.json and resolve the dependency tree
     // For simulation, return a set of known dependencies
     return [
@@ -254,13 +262,14 @@ export class DependencyScanner {
       }
 
       for (const license of licenses) {
-        if (this.options.deniedLicenses.some((d) => license.toLowerCase().includes(d.toLowerCase()))) {
+        const normalizedLicense = license.toLowerCase().trim();
+        if (this.options.deniedLicenses.some((d) => normalizedLicense === d.toLowerCase().trim())) {
           issues.push({
             package: dep.name,
             license,
             reason: 'denied',
           });
-        } else if (!this.options.allowedLicenses.some((a) => license.toLowerCase().includes(a.toLowerCase()))) {
+        } else if (!this.options.allowedLicenses.some((a) => normalizedLicense === a.toLowerCase().trim())) {
           issues.push({
             package: dep.name,
             license,

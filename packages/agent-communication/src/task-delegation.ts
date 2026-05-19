@@ -72,6 +72,30 @@ export class TaskDelegationManager {
   }
 
   unregisterAgent(agentId: string): void {
+    // COMM-11: Handle active tasks - cancel timers and mark tasks failed
+    for (const [taskId, status] of this.tasks.entries()) {
+      if (status.assignment?.agentId === agentId &&
+          (status.state === 'assigned' || status.state === 'in_progress' || status.state === 'pending')) {
+        status.state = 'failed';
+        const timer = this.taskTimers.get(taskId);
+        if (timer) {
+          clearTimeout(timer);
+          this.taskTimers.delete(taskId);
+        }
+        const resolver = this.taskResolvers.get(taskId);
+        if (resolver) {
+          this.taskResolvers.delete(taskId);
+          resolver({
+            taskId,
+            agentId,
+            success: false,
+            result: null,
+            completedAt: Date.now(),
+            error: `Agent ${agentId} unregistered`,
+          });
+        }
+      }
+    }
     this.agents.delete(agentId);
   }
 
@@ -152,7 +176,7 @@ export class TaskDelegationManager {
         status.result = result;
         this.tasks.set(task.id, status);
         resolve(result);
-      }, Math.min(task.timeout, 100)); // Cap at 100ms for testing
+      }, task.timeout);
       this.taskTimers.set(task.id, timer);
     });
   }
@@ -226,13 +250,36 @@ export class TaskDelegationManager {
 
     switch (strategy) {
       case 'round-robin':
-        return candidates[this.roundRobinIndex++ % candidates.length].agentId;
+        // COMM-28: Use modulo assignment to prevent unbounded growth
+        const idx = this.roundRobinIndex % candidates.length;
+        this.roundRobinIndex = idx + 1;
+        return candidates[idx].agentId;
       case 'least-loaded':
-        return candidates.sort((a, b) => a.activeTasks - b.activeTasks)[0].agentId;
+        // COMM-35: Use linear scan instead of sort in place to avoid mutating candidates
+        {
+          let minTasks = Infinity;
+          let selected = candidates[0];
+          for (const c of candidates) {
+            if (c.activeTasks < minTasks) {
+              minTasks = c.activeTasks;
+              selected = c;
+            }
+          }
+          return selected.agentId;
+        }
       case 'capability-based':
-        return candidates.sort(
-          (a, b) => b.capabilities.length - a.capabilities.length,
-        )[0].agentId;
+        // COMM-35: Use linear scan instead of sort in place
+        {
+          let maxCaps = -1;
+          let selected = candidates[0];
+          for (const c of candidates) {
+            if (c.capabilities.length > maxCaps) {
+              maxCaps = c.capabilities.length;
+              selected = c;
+            }
+          }
+          return selected.agentId;
+        }
       case 'random':
         return candidates[Math.floor(Math.random() * candidates.length)].agentId;
       default:

@@ -930,8 +930,8 @@ describe('WorkflowErrorHandler', () => {
     handler.setStrategy('step1', 'retry');
     handler.setRetryPolicy('step1', { count: 3, delay: 10, backoff: 'fixed' });
     const result = await handler.handle(
-      new Error('retryable'),
-      { workflowId: 'wf1', instanceId: 'inst1', stepId: 'step1', error: new Error('retryable'), variables: {}, attempt: 0 },
+      new Error('ECONNREFUSED'),
+      { workflowId: 'wf1', instanceId: 'inst1', stepId: 'step1', error: new Error('ECONNREFUSED'), variables: {}, attempt: 0 },
     );
     expect(result.action).toBe('retry');
     expect(result.retried).toBe(true);

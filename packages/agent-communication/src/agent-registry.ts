@@ -105,6 +105,11 @@ export class AgentRegistry {
 
   setHeartbeatConfig(interval: number, unhealthyAfter: number): void {
     this.heartbeatConfig = { interval, unhealthyAfter };
+    // COMM-12: Restart all heartbeat timers with the new interval
+    for (const agentId of this.agents.keys()) {
+      this.stopHeartbeatCheck(agentId);
+      this.startHeartbeatCheck(agentId);
+    }
   }
 
   private startHeartbeatCheck(agentId: string): void {

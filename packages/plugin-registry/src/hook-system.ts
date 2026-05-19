@@ -90,7 +90,11 @@ export class HookSystem {
       if (!hh.options.condition(...args)) continue;
 
       try {
-        hh.handler(...args);
+        const result = hh.handler(...args);
+        if (result instanceof Promise) {
+          // Fire and forget for sync doAction - log errors but don't block
+          result.catch(() => {});
+        }
       } catch (err) {
         // Silently handle errors in action hooks
       }

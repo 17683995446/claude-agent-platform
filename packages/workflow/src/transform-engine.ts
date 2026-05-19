@@ -254,6 +254,15 @@ export class TransformEngine {
     return result;
   }
 
+  /**
+   * Remove duplicate items from an array.
+   *
+   * @knownLimitation This method uses JSON.stringify for deduplication, which means:
+   * - Objects with identical key-value pairs but different key order will be considered equal.
+   * - `undefined`, `Infinity`, and `NaN` values may not serialize correctly.
+   * - Circular references will cause a TypeError.
+   * For advanced deduplication needs, consider providing a custom comparator.
+   */
   private transformUniq(data: unknown): unknown {
     if (!Array.isArray(data)) return data;
     return [...new Set(data.map(item => JSON.stringify(item)))].map(item => JSON.parse(item));

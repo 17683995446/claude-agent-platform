@@ -179,19 +179,47 @@ export class PluginVersionManager {
 
     if (this.eq(fromVer, toVer)) return [from];
 
+    const isDowngrade = this.gt(fromVer, toVer);
+
     const path: string[] = [from];
 
     // Simple path: just step through major.minor versions
     let current = { ...fromVer };
+    const seen = new Set<string>();
+    seen.add(current.raw);
+
+    const maxSteps = 1000; // Safety limit to prevent infinite loops
+    let steps = 0;
 
     while (current.major !== toVer.major || current.minor !== toVer.minor || current.patch !== toVer.patch) {
-      if (current.major < toVer.major) {
-        current = { major: current.major + 1, minor: 0, patch: 0, raw: `${current.major + 1}.0.0` };
-      } else if (current.minor < toVer.minor) {
-        current = { ...current, minor: current.minor + 1, patch: 0, raw: `${current.major}.${current.minor + 1}.0` };
-      } else {
-        current = { ...current, patch: current.patch + 1, raw: `${current.major}.${current.minor}.${current.patch + 1}` };
+      if (steps++ >= maxSteps) {
+        throw new Error(`Unable to compute update path from ${from} to ${to}: too many steps (possible cycle)`);
       }
+
+      if (isDowngrade) {
+        // Downgrade path
+        if (current.major > toVer.major) {
+          current = { major: current.major - 1, minor: 0, patch: 0, raw: `${current.major - 1}.0.0` };
+        } else if (current.minor > toVer.minor) {
+          current = { ...current, minor: current.minor - 1, patch: 0, raw: `${current.major}.${current.minor - 1}.0` };
+        } else {
+          current = { ...current, patch: current.patch - 1, raw: `${current.major}.${current.minor}.${current.patch - 1}` };
+        }
+      } else {
+        // Upgrade path
+        if (current.major < toVer.major) {
+          current = { major: current.major + 1, minor: 0, patch: 0, raw: `${current.major + 1}.0.0` };
+        } else if (current.minor < toVer.minor) {
+          current = { ...current, minor: current.minor + 1, patch: 0, raw: `${current.major}.${current.minor + 1}.0` };
+        } else {
+          current = { ...current, patch: current.patch + 1, raw: `${current.major}.${current.minor}.${current.patch + 1}` };
+        }
+      }
+
+      if (seen.has(current.raw)) {
+        throw new Error(`Cycle detected in update path from ${from} to ${to} at version ${current.raw}`);
+      }
+      seen.add(current.raw);
       path.push(current.raw);
     }
 

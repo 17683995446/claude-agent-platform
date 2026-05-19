@@ -42,6 +42,7 @@ export class PluginCommunicationBus {
   };
   private blockedPlugins = new Set<string>();
   private messageFilters: Array<(from: string, to: string, msg: PluginMessage) => boolean> = [];
+  private maxLogSize = 10000;
 
   setLimits(limits: Partial<MessageSizeLimits>): void {
     this.limits = { ...this.limits, ...limits };
@@ -88,6 +89,13 @@ export class PluginCommunicationBus {
     return true;
   }
 
+  private addToMessageLog(entry: { from: string; to: string; message: PluginMessage; timestamp: number }): void {
+    this.messageLog.push(entry);
+    if (this.messageLog.length > this.maxLogSize) {
+      this.messageLog = this.messageLog.slice(-this.maxLogSize);
+    }
+  }
+
   send(from: string, to: string, message: PluginMessage): boolean {
     if (this.blockedPlugins.has(from)) {
       throw new Error(`Plugin "${from}" is blocked from sending messages`);
@@ -106,14 +114,10 @@ export class PluginCommunicationBus {
     const targetHandlers = this.handlers.get(to);
     if (!targetHandlers || targetHandlers.length === 0) return false;
 
-    this.messageLog.push({ from, to, message: enrichedMessage, timestamp: Date.now() });
+    this.addToMessageLog({ from, to, message: enrichedMessage, timestamp: Date.now() });
 
     for (const handler of targetHandlers) {
-      try {
-        handler(enrichedMessage, from);
-      } catch {
-        // Ignore handler errors
-      }
+      handler(enrichedMessage, from);
     }
 
     return true;
@@ -140,16 +144,12 @@ export class PluginCommunicationBus {
 
       if (!this.checkFilters(from, pluginName, enrichedMessage)) continue;
 
-      this.messageLog.push({ from, to: pluginName, message: enrichedMessage, timestamp: Date.now() });
+      this.addToMessageLog({ from, to: pluginName, message: enrichedMessage, timestamp: Date.now() });
 
       for (const handler of pluginHandlers) {
-        try {
-          handler(enrichedMessage, from);
-        } catch {
-          // Ignore handler errors
-        }
+        handler(enrichedMessage, from);
+        delivered++;
       }
-      delivered++;
     }
 
     return delivered;
@@ -189,7 +189,7 @@ export class PluginCommunicationBus {
         return;
       }
 
-      this.messageLog.push({ from, to, message: enrichedMessage, timestamp: Date.now() });
+      this.addToMessageLog({ from, to, message: enrichedMessage, timestamp: Date.now() });
 
       for (const handler of targetHandlers) {
         try {
@@ -214,6 +214,7 @@ export class PluginCommunicationBus {
           clearTimeout(timer);
           this.pendingRequests.delete(requestId);
           reject(err);
+          break;
         }
       }
     });

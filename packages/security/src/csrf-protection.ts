@@ -9,6 +9,8 @@ export interface CSRFTokenOptions {
   expiryMs?: number;
   /** Character set for token generation */
   charset?: string;
+  /** Maximum number of tokens to store (default: 10000) */
+  maxTokens?: number;
 }
 
 export interface CSRFToken {
@@ -25,21 +27,31 @@ export class CSRFProtection {
   private tokenLength: number;
   private expiryMs: number;
   private charset: string;
+  private maxTokens: number;
 
   constructor(options?: CSRFTokenOptions) {
     this.tokenLength = options?.tokenLength ?? 32;
     this.expiryMs = options?.expiryMs ?? 3600000;
     this.charset = options?.charset ?? 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    this.maxTokens = options?.maxTokens ?? 10000;
   }
 
   /**
    * Generate a new CSRF token
    */
   generateToken(): string {
-    const bytes = randomBytes(this.tokenLength);
+    // Use rejection sampling to avoid modular bias
+    const charsetLen = this.charset.length;
+    // Calculate the maximum byte value that produces unbiased results
+    const maxUnbiased = Math.floor(256 / charsetLen) * charsetLen;
     let token = '';
-    for (const byte of bytes) {
-      token += this.charset[byte % this.charset.length];
+    while (token.length < this.tokenLength) {
+      const bytes = randomBytes(this.tokenLength - token.length + 1); // extra byte for rejection
+      for (const byte of bytes) {
+        if (byte >= maxUnbiased) continue; // reject biased bytes
+        token += this.charset[byte % charsetLen];
+        if (token.length >= this.tokenLength) break;
+      }
     }
 
     const csrfToken: CSRFToken = {
@@ -48,6 +60,10 @@ export class CSRFProtection {
       expiresAt: Date.now() + this.expiryMs,
     };
 
+    // SEC-14: Enforce max token storage to prevent unbounded memory growth
+    if (this.tokens.size >= this.maxTokens) {
+      this.cleanup();
+    }
     this.tokens.set(token, csrfToken);
     return token;
   }
@@ -61,16 +77,18 @@ export class CSRFProtection {
     }
 
     // Constant-time comparison to prevent timing attacks
-    if (token.length !== expectedToken.length) {
-      return false;
-    }
-
+    // Do NOT check lengths separately as that leaks length information
     let result = 0;
-    for (let i = 0; i < token.length; i++) {
-      result |= token.charCodeAt(i) ^ expectedToken.charCodeAt(i);
+    // Always compare up to the max length to avoid timing leaks
+    const maxLen = Math.max(token.length, expectedToken.length);
+    for (let i = 0; i < maxLen; i++) {
+      const a = i < token.length ? token.charCodeAt(i) : 0;
+      const b = i < expectedToken.length ? expectedToken.charCodeAt(i) : 0;
+      result |= a ^ b;
     }
 
-    if (result !== 0) {
+    // Lengths must also match (encoded in the XOR result via padding zeros)
+    if (result !== 0 || token.length !== expectedToken.length) {
       return false;
     }
 

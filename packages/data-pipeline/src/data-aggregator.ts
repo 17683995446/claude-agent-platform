@@ -244,7 +244,7 @@ export class DataAggregator {
         return `${date.getFullYear()}-W${week}`;
       }
       case 'month':
-        return `${date.getFullYear()}-${date.getMonth()}`;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
   }
 

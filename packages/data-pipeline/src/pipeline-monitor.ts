@@ -97,6 +97,11 @@ export class PipelineMonitor {
             timestamp: Date.now(),
           });
         }
+      } else {
+        // Remove alert when condition resolves
+        this.alerts = this.alerts.filter(
+          a => !(a.pipelineId === event.pipelineId && a.ruleName === rule.name)
+        );
       }
     }
   }

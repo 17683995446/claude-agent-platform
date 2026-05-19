@@ -50,6 +50,7 @@ export class PluginLoader {
   private watchers = new Map<string, ReturnType<typeof setInterval>>();
   private loadHandlers = new Map<string, Array<(plugin: PluginDefinition) => void>>();
   private unloadHandlers = new Map<string, Array<(pluginName: string) => void>>();
+  private inlineCounter = 0;
 
   setSandboxProvider(sandbox: PluginSandbox): void {
     this.sandboxProvider = sandbox;
@@ -118,7 +119,7 @@ export class PluginLoader {
 
     // Parse basic plugin definition from code string (simplified)
     // In a real implementation, this would use eval or a module compiler
-    const name = source.name ?? `inline_${Date.now()}`;
+    const name = source.name ?? `inline_${++this.inlineCounter}`;
     return {
       name,
       version: '0.0.0',
@@ -164,10 +165,17 @@ export class PluginLoader {
       throw new Error('URL plugin requires url');
     }
 
+    let hostname: string;
+    try {
+      hostname = new URL(source.url).hostname;
+    } catch {
+      throw new Error(`Invalid URL: "${source.url}" is not a valid URL`);
+    }
+
     // Simulate URL loading
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    const name = source.name ?? new URL(source.url).hostname;
+    const name = source.name ?? hostname;
     return {
       name,
       version: '1.0.0',
@@ -207,8 +215,12 @@ export class PluginLoader {
     }
 
     const source = instance.source;
+    const originalName = instance.definition.name;
     await this.unload(pluginName);
-    await this.load(source);
+
+    // Ensure the source uses the original name so reload doesn't register under a different name
+    const effectiveSource = { ...source, name: source.name ?? originalName };
+    await this.load(effectiveSource);
   }
 
   enableHotReload(pluginName: string, options?: HotReloadOptions): void {
@@ -220,7 +232,12 @@ export class PluginLoader {
     const watcher = setInterval(() => {
       const instance = this.loadedPlugins.get(pluginName);
       if (instance && instance.source.type === 'local') {
-        options?.onLoad?.(instance.definition);
+        this.reload(pluginName).then(() => {
+          options?.onLoad?.(instance.definition);
+        }).catch(() => {
+          // Reload failed, notify via onUnload
+          options?.onUnload?.(pluginName);
+        });
       }
     }, debounceMs);
 

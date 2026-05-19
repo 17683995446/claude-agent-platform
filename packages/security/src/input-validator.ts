@@ -378,35 +378,55 @@ export class InputValidator {
 
   /**
    * Sanitize HTML - strip dangerous tags and attributes
+   * NOTE: For production use, prefer a dedicated library like DOMPurify or sanitize-html.
+   * This method provides a best-effort sanitization but cannot cover all edge cases.
    */
   static sanitizeHTML(input: string): string {
     let result = input;
 
-    // Remove script tags and their content
+    // Remove null bytes
+    result = result.replace(/\0/g, '');
+
+    // Remove all HTML tags except safe inline elements (b, i, em, strong, span, br, p)
+    // First, remove dangerous tags and their content
     result = result.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-
-    // Remove event handler attributes
-    result = result.replace(/\s*on\w+\s*=\s*(['"])[^'"]*\1/gi, '');
-    result = result.replace(/\s*on\w+\s*=\s*\S+/gi, '');
-
-    // Remove javascript: URLs
-    result = result.replace(/href\s*=\s*(['"])javascript:[^'"]*\1/gi, 'href="#"');
-    result = result.replace(/src\s*=\s*(['"])javascript:[^'"]*\1/gi, 'src=""');
-
-    // Remove data: URLs in src attributes
-    result = result.replace(/src\s*=\s*(['"])data:[^'"]*\1/gi, 'src=""');
-
-    // Remove iframe, object, embed, form tags (including closing tags)
-    result = result.replace(/<\/?(iframe|object|embed|form|base|link|meta)\b[^>]*\/?>/gi, '');
-
-    // Remove style tags
     result = result.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+    result = result.replace(/<iframe\b[^>]*\/?>/gi, '');
+    result = result.replace(/<object\b[^>]*\/?>/gi, '');
+    result = result.replace(/<embed\b[^>]*\/?>/gi, '');
+    result = result.replace(/<form\b[^>]*\/?>/gi, '');
+    result = result.replace(/<base\b[^>]*\/?>/gi, '');
+    result = result.replace(/<link\b[^>]*\/?>/gi, '');
+    result = result.replace(/<meta\b[^>]*\/?>/gi, '');
+    result = result.replace(/<svg\b[^>]*\/?>/gi, '');
+    result = result.replace(/<math\b[^>]*\/?>/gi, '');
+
+    // Remove event handler attributes (handle various quoting styles and no quotes)
+    result = result.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
+
+    // Remove javascript: and vbscript: and data: URLs in any attribute
+    result = result.replace(/(href|src|action|formaction|poster|background)\s*=\s*(?:"[^"]*"|'[^']*')/gi, (match) => {
+      const value = match.replace(/^[\w]+\s*=\s*["']?/i, '').replace(/["']$/, '');
+      if (/^\s*(javascript|vbscript|data)\s*:/i.test(value)) {
+        return match.split('=')[0] + '=""';
+      }
+      return match;
+    });
+
+    // Remove any remaining HTML comments
+    result = result.replace(/<!--[\s\S]*?-->/g, '');
+
+    // Remove any remaining tags that are not in the safe list
+    result = result.replace(/<\/?(?!b\b|i\b|em\b|strong\b|span\b|br\b|p\b|\/\s*(?:b|i|em|strong|span|br|p)\b)[a-zA-Z][^>]*>/gi, '');
 
     return result;
   }
 
   /**
    * Sanitize SQL input - escape SQL special characters
+   * WARNING: This is a last-resort defense. Always use parameterized queries
+   * (prepared statements) instead of string interpolation for SQL. This method
+   * only provides basic escaping and cannot prevent all SQL injection vectors.
    */
   static sanitizeSQL(input: string): string {
     return input
@@ -415,15 +435,24 @@ export class InputValidator {
       .replace(/\0/g, '\\0')
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
-      .replace(/\x1a/g, '\\Z');
+      .replace(/\x1a/g, '\\Z')
+      .replace(/"/g, '\\"');
   }
 
   /**
    * Sanitize file path - normalize and validate against traversal
    */
   static sanitizePath(input: string): string {
+    // Decode URL-encoded characters first to prevent bypass via %2e%2e%2f etc.
+    let decoded = input;
+    try {
+      decoded = decodeURIComponent(input);
+    } catch {
+      // If decoding fails, use the original input
+    }
+
     // Normalize path separators
-    let normalized = input.replace(/\\/g, '/');
+    let normalized = decoded.replace(/\\/g, '/');
 
     // Remove null bytes
     normalized = normalized.replace(/\0/g, '');
@@ -459,6 +488,8 @@ export class InputValidator {
       .replace(/\\/g, '\\\\')
       .replace(/`/g, '\\`')
       .replace(/\$/g, '\\$')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '\\"')
       .replace(/\(/g, '\\(')
       .replace(/\)/g, '\\)')
       .replace(/\{/g, '\\{')

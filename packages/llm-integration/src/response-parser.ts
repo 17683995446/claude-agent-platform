@@ -63,12 +63,12 @@ export class ResponseParser {
 
     // 尝试 3: 查找内容中的 JSON 对象
     const jsonPatterns = [
-      /\{[\s\S]*\}/,  // JSON 对象
-      /\[[\s\S]*\]/,  // JSON 数组
+      /\{[\s\S]*?\}/g,  // JSON 对象 (non-greedy)
+      /\[[\s\S]*?\]/g,  // JSON 数组 (non-greedy)
     ];
 
     for (const pattern of jsonPatterns) {
-      const match = content.match(pattern);
+      const match = pattern.exec(content);
       if (match) {
         try {
           return JSON.parse(match[0]);

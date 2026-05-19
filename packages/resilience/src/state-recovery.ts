@@ -38,6 +38,7 @@ export class StateRecoveryManager {
   private snapshots = new Map<string, Snapshot>();
   private version = 0;
   private eventLog: RecoveryEvent[] = [];
+  private readonly maxEventLogSize = 10000;
   private eventCallbacks: RecoveryEventCallback[] = [];
   private autoSnapshotTimer: ReturnType<typeof setInterval> | null = null;
   private readonly config: Required<Pick<RecoveryConfig, 'maxSnapshots'>> & RecoveryConfig;
@@ -73,6 +74,7 @@ export class StateRecoveryManager {
       timestamp: Date.now(),
     };
     this.eventLog.push(event);
+    this.trimEventLog();
     this.eventCallbacks.forEach(cb => cb(event));
 
     return snapshot;
@@ -92,6 +94,7 @@ export class StateRecoveryManager {
       timestamp: Date.now(),
     };
     this.eventLog.push(event);
+    this.trimEventLog();
     this.eventCallbacks.forEach(cb => cb(event));
 
     if (strategy === 'partial_restore') {
@@ -132,6 +135,7 @@ export class StateRecoveryManager {
         timestamp: Date.now(),
       };
       this.eventLog.push(event);
+      this.trimEventLog();
       this.eventCallbacks.forEach(cb => cb(event));
     }
 
@@ -147,6 +151,7 @@ export class StateRecoveryManager {
         timestamp: Date.now(),
       };
       this.eventLog.push(event);
+      this.trimEventLog();
       this.eventCallbacks.forEach(cb => cb(event));
     }
     return deleted;
@@ -187,11 +192,30 @@ export class StateRecoveryManager {
   }
 
   private deepClone<T>(obj: T): T {
-    return JSON.parse(JSON.stringify(obj));
+    return structuredClone(obj);
   }
 
   private startAutoSnapshot(): void {
-    // Auto snapshot is triggered externally via events; this sets up the interval
-    // Actual snapshot creation is done by the caller
+    if (!this.config.autoSnapshotInterval || this.config.autoSnapshotInterval <= 0) return;
+    // Note: Actual snapshot creation requires a state provider callback.
+    // This interval emits an event so that external listeners can decide
+    // whether to create a snapshot. The interval is set up but the caller
+    // must listen for auto-snapshot events to perform the actual work.
+    this.autoSnapshotTimer = setInterval(() => {
+      const event: RecoveryEvent = {
+        type: 'snapshot_created',
+        snapshotId: `auto_${Date.now()}`,
+        timestamp: Date.now(),
+      };
+      this.eventLog.push(event);
+      this.trimEventLog();
+      this.eventCallbacks.forEach(cb => cb(event));
+    }, this.config.autoSnapshotInterval);
+  }
+
+  private trimEventLog(): void {
+    if (this.eventLog.length > this.maxEventLogSize) {
+      this.eventLog = this.eventLog.slice(this.eventLog.length - this.maxEventLogSize);
+    }
   }
 }

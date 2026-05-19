@@ -96,6 +96,9 @@ export class HealthChecker {
     };
   }
 
+  // NOTE: This is the public overload. It accepts only a name string and looks up
+  // the config internally. The private overload below accepts (name, config) and
+  // is used internally for direct execution with a known config.
   async checkComponent(name: string): Promise<ComponentHealth> {
     const config = this.checks.get(name);
     if (!config) {
@@ -180,12 +183,15 @@ export class HealthChecker {
 
   private async executeWithTimeout(fn: HealthCheckFn, timeout?: number): Promise<HealthCheckResult> {
     if (!timeout) return fn();
+    let timerId: ReturnType<typeof setTimeout>;
     return Promise.race([
       fn(),
-      new Promise<HealthCheckResult>((_, reject) =>
-        setTimeout(() => reject(new Error(`Health check timed out after ${timeout}ms`)), timeout),
-      ),
-    ]);
+      new Promise<HealthCheckResult>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error(`Health check timed out after ${timeout}ms`)), timeout);
+      }),
+    ]).finally(() => {
+      clearTimeout(timerId);
+    });
   }
 
   private computeOverallHealth(components: Record<string, ComponentHealth>): HealthLevel {

@@ -165,11 +165,23 @@ export class DataCleanser {
   }
 
   private removeOutliers(data: DataRecord[], field: string, method: OutlierMethod, threshold?: number): DataRecord[] {
-    const values = data.map(r => Number(r[field])).filter(n => !isNaN(n));
+    const indexed = data.map((r, i) => ({ record: r, value: Number(r[field]), index: i }));
+    const values = indexed.map(item => item.value).filter(n => !isNaN(n));
     const outliers = this.detectOutliers(values, method, threshold);
 
     const outlierSet = new Set(outliers.indices);
-    return data.filter((_, i) => !outlierSet.has(i));
+    // Map filtered indices back to original indices
+    const outlierOriginalIndices = new Set<number>();
+    let filteredIdx = 0;
+    for (const item of indexed) {
+      if (!isNaN(item.value)) {
+        if (outlierSet.has(filteredIdx)) {
+          outlierOriginalIndices.add(item.index);
+        }
+        filteredIdx++;
+      }
+    }
+    return data.filter((_, i) => !outlierOriginalIndices.has(i));
   }
 
   private normalizeField(data: DataRecord[], field: string, method: NormalizationMethod): DataRecord[] {

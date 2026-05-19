@@ -59,8 +59,8 @@ export class PipelineBuilder<T> {
     const partial = options?.partial ?? true;
 
     const newBuilder = new PipelineBuilder<T[]>(this.stages);
-    // Use a factory pattern so each build() gets its own buffer
-    const batchStageFactory = (): PipelineStage<T, T[]> => ({
+    // Create a proper batch stage and add it directly to stages
+    newBuilder.stages.push({
       name: 'batch',
       transform: (() => {
         const buffer: T[] = []; // Fresh buffer per build
@@ -77,17 +77,8 @@ export class PipelineBuilder<T> {
           throw new FilterSkipError();
         };
       })(),
-    });
+    } as PipelineStage<any, any>);
 
-    // Store factory to create fresh stage on build
-    const originalBuild = newBuilder['build'].bind(newBuilder);
-    newBuilder['build'] = () => {
-      const pipeline = originalBuild();
-      const freshStage = batchStageFactory();
-      pipeline.stages.push(freshStage);
-      return pipeline;
-    };
-    // Remove the stage from stages since build() will add it
     return newBuilder;
   }
 

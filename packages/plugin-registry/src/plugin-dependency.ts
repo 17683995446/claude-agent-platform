@@ -95,33 +95,42 @@ export class PluginDependencyResolver {
     edges: Array<{ from: string; to: string; constraint: string }>,
     allNames: Set<string>,
   ): void {
+    const memo = new Map<string, number>();
     for (const name of allNames) {
-      const depth = this.getDepth(name, nodes, edges, new Set());
+      const depth = this.getDepthMemo(name, nodes, edges, new Set(), memo);
       const node = nodes.get(name);
       if (node) node.depth = depth;
     }
   }
 
-  private getDepth(
+  private getDepthMemo(
     name: string,
     nodes: Map<string, DependencyNode>,
     edges: Array<{ from: string; to: string; constraint: string }>,
     visiting: Set<string>,
+    memo: Map<string, number>,
   ): number {
+    if (memo.has(name)) return memo.get(name)!;
     if (visiting.has(name)) return 0; // circular, stop
     visiting.add(name);
 
     const deps = edges.filter(e => e.from === name).map(e => e.to);
-    if (deps.length === 0) return 0;
+    if (deps.length === 0) {
+      memo.set(name, 0);
+      visiting.delete(name);
+      return 0;
+    }
 
     let maxDepDepth = 0;
     for (const dep of deps) {
-      const depDepth = this.getDepth(dep, nodes, edges, visiting);
+      const depDepth = this.getDepthMemo(dep, nodes, edges, visiting, memo);
       if (depDepth > maxDepDepth) maxDepDepth = depDepth;
     }
 
     visiting.delete(name);
-    return maxDepDepth + 1;
+    const depth = maxDepDepth + 1;
+    memo.set(name, depth);
+    return depth;
   }
 
   private topologicalSort(
@@ -165,6 +174,12 @@ export class PluginDependencyResolver {
       }
     }
 
+    // Detect circular dependencies: if not all nodes were sorted, there is a cycle
+    if (sorted.length < allNames.size) {
+      const remaining = Array.from(allNames).filter(n => !sorted.includes(n));
+      throw new Error(`Circular dependency detected among plugins: ${remaining.join(', ')}`);
+    }
+
     return sorted;
   }
 
@@ -199,18 +214,38 @@ export class PluginDependencyResolver {
         const constraints = depMap.get(depName)!;
         if (!constraints.has(constraint)) constraints.set(constraint, []);
         constraints.get(constraint)!.push(plugin.name);
+
+        // Validate version constraint against actual registered version
+        const depPlugin = plugins.find(p => p.name === depName);
+        if (depPlugin && !this.versionManager.satisfies(depPlugin.version, constraint)) {
+          conflicts.push({
+            type: 'version_conflict',
+            plugin: plugin.name,
+            dependency: depName,
+            expected: constraint,
+            found: depPlugin.version,
+            message: `Plugin "${plugin.name}" requires "${depName}" ${constraint} but found ${depPlugin.version}`,
+          });
+        }
       }
     }
 
-    // Check circular dependencies
-    const cycles = this.detectCycles(plugins);
-    for (const cycle of cycles) {
-      conflicts.push({
-        type: 'circular_dependency',
-        plugin: cycle[0],
-        cycle,
-        message: `Circular dependency detected: ${cycle.join(' -> ')}`,
-      });
+    // Check circular dependencies via topological sort (avoids duplicate DFS)
+    try {
+      this.resolve(plugins);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Circular dependency')) {
+        // Extract cycle members from the error message
+        const cycles = this.detectCycles(plugins);
+        for (const cycle of cycles) {
+          conflicts.push({
+            type: 'circular_dependency',
+            plugin: cycle[0],
+            cycle,
+            message: `Circular dependency detected: ${cycle.join(' -> ')}`,
+          });
+        }
+      }
     }
 
     return conflicts;

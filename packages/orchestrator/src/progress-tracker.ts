@@ -9,6 +9,7 @@ import type { ProgressState, ProgressNotification, Milestone } from './types.js'
 export class ProgressTracker {
   private progressMap: Map<string, ProgressState> = new Map();
   private listeners: Map<string, Set<(notification: ProgressNotification) => void>> = new Map();
+  private activeTimeMap: Map<string, number> = new Map();
 
   /** Create a new progress tracker for a task */
   create(taskId: string, totalSteps: number, milestones?: { name: string; description: string; targetStep: number }[]): ProgressState {
@@ -34,6 +35,7 @@ export class ProgressTracker {
     };
 
     this.progressMap.set(taskId, state);
+    this.activeTimeMap.set(taskId, 0);
     return state;
   }
 
@@ -50,11 +52,12 @@ export class ProgressTracker {
 
     if (currentStep) state.currentStep = currentStep;
 
-    // Calculate ETA
+    // Calculate ETA based on active time only
     const now = Date.now();
-    const elapsed = now - state.startedAt.getTime();
-    if (state.completedSteps > 0 && elapsed > 0) {
-      const avgTimePerStep = elapsed / state.completedSteps;
+    const activeTime = (this.activeTimeMap.get(taskId) ?? 0) + (now - state.updatedAt.getTime());
+    this.activeTimeMap.set(taskId, activeTime);
+    if (state.completedSteps > 0 && activeTime > 0) {
+      const avgTimePerStep = activeTime / state.completedSteps;
       state.eta = Math.round(avgTimePerStep * (state.totalSteps - state.completedSteps));
     }
 
@@ -132,6 +135,9 @@ export class ProgressTracker {
   pause(taskId: string): ProgressState | undefined {
     const state = this.progressMap.get(taskId);
     if (!state || state.status !== 'in_progress') return undefined;
+    // Snapshot active time up to now
+    const activeTime = (this.activeTimeMap.get(taskId) ?? 0) + (Date.now() - state.updatedAt.getTime());
+    this.activeTimeMap.set(taskId, activeTime);
     state.status = 'paused';
     state.updatedAt = new Date();
     return state;
@@ -164,7 +170,13 @@ export class ProgressTracker {
     this.listeners.get(taskId)!.add(listener);
 
     return () => {
-      this.listeners.get(taskId)?.delete(listener);
+      const taskListeners = this.listeners.get(taskId);
+      if (taskListeners) {
+        taskListeners.delete(listener);
+        if (taskListeners.size === 0) {
+          this.listeners.delete(taskId);
+        }
+      }
     };
   }
 
@@ -185,6 +197,7 @@ export class ProgressTracker {
   /** Remove a progress tracker */
   remove(taskId: string): boolean {
     this.listeners.delete(taskId);
+    this.activeTimeMap.delete(taskId);
     return this.progressMap.delete(taskId);
   }
 
@@ -192,5 +205,6 @@ export class ProgressTracker {
   clear(): void {
     this.progressMap.clear();
     this.listeners.clear();
+    this.activeTimeMap.clear();
   }
 }

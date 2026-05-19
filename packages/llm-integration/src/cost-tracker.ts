@@ -296,18 +296,22 @@ export class CostTracker {
   }
 
   private getTodayString(): string {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   private getCurrentMonthString(): string {
-    return new Date().toISOString().slice(0, 7);
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
 
   private getDateString(timestamp: number): string {
-    return new Date(timestamp).toISOString().slice(0, 10);
+    const d = new Date(timestamp);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   private getMonthString(timestamp: number): string {
-    return new Date(timestamp).toISOString().slice(0, 7);
+    const d = new Date(timestamp);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
 }

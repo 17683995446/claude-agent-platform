@@ -1356,8 +1356,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
       registerA.set('valueA', timeA);
       registerB.set('valueB', timeB);
 
-      // 验证时间戳差异
-      expect(timeB - timeA).toBe(5000);
+      // 验证时间戳差异 (Date.now() 可能有1ms漂移)
+      expect(timeB - timeA).toBeGreaterThanOrEqual(5000);
+      expect(timeB - timeA).toBeLessThanOrEqual(5010);
 
       // 合并时应该使用实际时间戳
       registerA.merge(registerB.getState());
@@ -1378,8 +1379,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
       const timeB = clockSimulator.now('nodeB');
       graph.addNodeAt('n2', timeB, ['Person'], { label: 'B' });
 
-      // 验证时间差
-      expect(timeB - timeA).toBe(10000);
+      // 验证时间差 (Date.now() 可能有1ms漂移)
+      expect(timeB - timeA).toBeGreaterThanOrEqual(10000);
+      expect(timeB - timeA).toBeLessThanOrEqual(10010);
 
       // 查询特定时间点的图状态
       const snapshot = graph.getStateAt(timeA + 5000);
@@ -1430,8 +1432,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
       const timeA = clockSimulator.now('nodeA');
       const timeB = clockSimulator.now('nodeB');
 
-      // 验证时钟偏移
-      expect(timeB - timeA).toBe(30000);
+      // 验证时钟偏移 (Date.now() 可能有1ms漂移)
+      expect(timeB - timeA).toBeGreaterThanOrEqual(30000);
+      expect(timeB - timeA).toBeLessThanOrEqual(30010);
 
       expect(sync).toBeDefined();
     });
@@ -1501,8 +1504,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
       const changes = tracker.getChanges(0);
       expect(changes.length).toBe(2);
 
-      // 验证时间戳差异
-      expect(time2 - time1).toBe(45000);
+      // 验证时间戳差异 (Date.now() 可能有1ms漂移)
+      expect(time2 - time1).toBeGreaterThanOrEqual(45000);
+      expect(time2 - time1).toBeLessThanOrEqual(45010);
     });
 
     test('ConsistencyChecker: 时钟偏移的不变量检查', async () => {
@@ -1566,8 +1570,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
 
       expect(map.get('key1')).toBe('valueB');
 
-      // 验证时间戳
-      expect(timeB - timeA).toBe(25000);
+      // 验证时间戳 (Date.now() 可能有1ms漂移)
+      expect(timeB - timeA).toBeGreaterThanOrEqual(25000);
+      expect(timeB - timeA).toBeLessThanOrEqual(25010);
     });
 
     test('AnomalyDetector: 检测时钟偏移异常', async () => {
@@ -1687,8 +1692,9 @@ describe('分布式系统故障注入测试 - Distributed System Chaos Tests', (
       const report = metrics.getMetrics();
       expect(report).toBeDefined();
 
-      // 验证时间戳差异
-      expect(time2 - time1).toBe(15000);
+      // 验证时间戳差异 (Date.now() 可能有1ms漂移)
+      expect(time2 - time1).toBeGreaterThanOrEqual(15000);
+      expect(time2 - time1).toBeLessThanOrEqual(15010);
     });
   });
 

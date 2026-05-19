@@ -115,7 +115,11 @@ export class CircuitBreaker {
   }
 
   off(event: keyof CircuitBreakerEvents, callback: EventCallback): void {
-    this.listeners.get(event)?.delete(callback);
+    const set = this.listeners.get(event);
+    set?.delete(callback);
+    if (set && set.size === 0) {
+      this.listeners.delete(event);
+    }
   }
 
   private emit(event: string, ...args: unknown[]): void {
@@ -134,7 +138,10 @@ export class CircuitBreaker {
     }
 
     if (this.state === 'closed') {
-      // In time-based window, remove old failures
+      // Design decision: successes prune the window (remove stale entries) but do
+      // not actively reduce the failure count. The failure window naturally shrinks
+      // as old entries age out via pruneWindow(). This avoids masking a high
+      // failure rate with a few interleaved successes.
       this.pruneWindow();
     }
   }
@@ -154,15 +161,10 @@ export class CircuitBreaker {
       this.windowFailures.push({ time: now });
       this.pruneWindow();
 
-      if (this.config.windowType === 'count') {
-        // Use failureThreshold as the trip point; windowSize limits the sliding window
-        if (this.windowFailures.length >= this.config.failureThreshold) {
-          this.transitionTo('open');
-        }
-      } else {
-        if (this.windowFailures.length >= this.config.failureThreshold) {
-          this.transitionTo('open');
-        }
+      // Both count-based and time-based windows use the same trip condition:
+      // if the number of failures in the window meets the threshold, open the circuit.
+      if (this.windowFailures.length >= this.config.failureThreshold) {
+        this.transitionTo('open');
       }
     }
   }
@@ -186,6 +188,13 @@ export class CircuitBreaker {
     this.state = newState;
     this.stateEnterTime = now;
     this.halfOpenSuccessCount = 0;
+
+    // Reset failure counters when transitioning to closed state
+    if (newState === 'closed') {
+      this.failureCount = 0;
+      this.windowFailures = [];
+    }
+
     this.emit('stateChange', oldState, newState);
   }
 }

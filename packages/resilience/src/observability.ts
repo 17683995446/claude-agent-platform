@@ -131,9 +131,35 @@ export class ResilienceObservability {
     this.alertRules.push(rule);
   }
 
-  getDashboard(): ResilienceDashboard {
-    const now = Date.now();
+  /** Perform side effects: prune history, evaluate alert rules, record data point.
+   *  Called automatically by getDashboard(), but can be called explicitly for
+   *  finer control over when side effects occur. */
+  tick(): void {
     this.pruneHistory();
+
+    // Build a temporary dashboard for alert evaluation
+    const tempDashboard = this.buildDashboardSnapshot();
+    this.evaluateAlertRules(tempDashboard);
+
+    // Store historical data
+    this.historicalData.push({
+      timestamp: tempDashboard.timestamp,
+      data: {
+        openCircuitBreakers: tempDashboard.summary.openCircuitBreakers,
+        saturatedBulkheads: tempDashboard.summary.saturatedBulkheads,
+        totalRetries: tempDashboard.summary.totalRetries,
+      },
+    });
+  }
+
+  /** Returns the current dashboard. Calls tick() internally for side effects. */
+  getDashboard(): ResilienceDashboard {
+    this.tick();
+    return this.buildDashboardSnapshot();
+  }
+
+  private buildDashboardSnapshot(): ResilienceDashboard {
+    const now = Date.now();
 
     const circuitBreakers: CircuitBreakerSnapshot[] = [];
     let openCircuitBreakers = 0;
@@ -194,58 +220,25 @@ export class ResilienceObservability {
       });
     }
 
-    // Evaluate alert rules first (before building dashboard)
-    // Create a temporary dashboard for evaluation
-    const tempDashboard: ResilienceDashboard = {
+    const activeAlerts = this.alerts.filter(a => !a.resolved);
+
+    return {
       timestamp: now,
       circuitBreakers,
       bulkheads,
       retries,
       healthChecks,
-      alerts: this.alerts.filter(a => !a.resolved),
+      alerts: activeAlerts,
       summary: {
         totalCircuitBreakers: circuitBreakers.length,
         openCircuitBreakers,
         totalBulkheads: bulkheads.length,
         saturatedBulkheads,
         totalRetries,
-        totalAlerts: this.alerts.filter(a => !a.resolved).length,
+        totalAlerts: activeAlerts.length,
         criticalAlerts: this.alerts.filter(a => a.severity === 'critical' && !a.resolved).length,
       },
     };
-
-    this.evaluateAlertRules(tempDashboard);
-
-    // Now build the final dashboard with updated alerts
-    const dashboard: ResilienceDashboard = {
-      timestamp: now,
-      circuitBreakers,
-      bulkheads,
-      retries,
-      healthChecks,
-      alerts: this.alerts.filter(a => !a.resolved),
-      summary: {
-        totalCircuitBreakers: circuitBreakers.length,
-        openCircuitBreakers,
-        totalBulkheads: bulkheads.length,
-        saturatedBulkheads,
-        totalRetries,
-        totalAlerts: this.alerts.filter(a => !a.resolved).length,
-        criticalAlerts: this.alerts.filter(a => a.severity === 'critical' && !a.resolved).length,
-      },
-    };
-
-    // Store historical data
-    this.historicalData.push({
-      timestamp: now,
-      data: {
-        openCircuitBreakers,
-        saturatedBulkheads,
-        totalRetries,
-      },
-    });
-
-    return dashboard;
   }
 
   getAlerts(): Alert[] {
@@ -263,7 +256,17 @@ export class ResilienceObservability {
     }
   }
 
+  pruneResolvedAlerts(maxAge?: number): number {
+    const cutoff = maxAge ?? (24 * 60 * 60 * 1000); // default 24 hours
+    const now = Date.now();
+    const before = this.alerts.length;
+    this.alerts = this.alerts.filter(a => !a.resolved || (now - a.timestamp) < cutoff);
+    return before - this.alerts.length;
+  }
+
   getPrometheusMetrics(): string {
+    // getDashboard() calls tick() internally, so alert rules are evaluated
+    // and historical data is recorded before building the dashboard.
     const dashboard = this.getDashboard();
     const lines: string[] = [];
 

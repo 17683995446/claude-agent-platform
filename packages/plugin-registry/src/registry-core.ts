@@ -132,9 +132,11 @@ export class PluginRegistry {
       await this.deactivate(pluginName);
     }
 
+    // Clean up sandbox for initialized or active plugins
+    this.sandbox.destroySandbox(pluginName);
+
     this.plugins.delete(pluginName);
     this.states.delete(pluginName);
-    this.sandbox.destroySandbox(pluginName);
   }
 
   async initialize(pluginName: string): Promise<void> {
@@ -148,6 +150,9 @@ export class PluginRegistry {
     for (const depName of Object.keys(deps)) {
       const depState = this.states.get(depName);
       if (depState !== 'initialized' && depState !== 'active') {
+        if (!this.plugins.has(depName)) {
+          throw new Error(`Cannot initialize "${pluginName}": dependency "${depName}" is not registered`);
+        }
         await this.initialize(depName);
       }
     }
@@ -249,8 +254,18 @@ export class PluginRegistry {
       }
     }
 
+    // Destroy all sandboxes
+    for (const name of this.sandbox.listSandboxes()) {
+      this.sandbox.destroySandbox(name);
+    }
+
     this.plugins.clear();
     this.states.clear();
+
+    // Clear all subsystem state
+    this.communication.reset();
+    this.telemetry.reset();
+    this.hooks.removeAllHooks();
   }
 
   getPluginCount(): number {

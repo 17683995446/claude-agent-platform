@@ -40,6 +40,10 @@ export class Bulkhead {
   }
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
+    // NOTE: Check-then-act race condition on queue size. In single-threaded
+    // JavaScript (Node.js), this is safe because no async operations occur
+    // between the check and the enqueue. If ever used in a multi-threaded
+    // context, this would need atomic compare-and-swap semantics.
     if (this.activeCount < this.config.maxConcurrent) {
       return this.runDirectly(fn);
     }

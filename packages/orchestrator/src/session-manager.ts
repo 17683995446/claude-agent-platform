@@ -10,14 +10,14 @@ let sessionCounter = 0;
 
 function generateSessionId(): string {
   sessionCounter++;
-  return `session-${Date.now().toString(36)}-${sessionCounter.toString(36).padStart(4, '0')}`;
+  return `session-${Date.now().toString(36)}-${sessionCounter.toString(36)}`;
 }
 
 let messageCounter = 0;
 
 function generateMessageId(): string {
   messageCounter++;
-  return `msg-${Date.now().toString(36)}-${messageCounter.toString(36).padStart(4, '0')}`;
+  return `msg-${Date.now().toString(36)}-${messageCounter.toString(36)}`;
 }
 
 // ---- SessionManager Class ----
@@ -25,12 +25,14 @@ function generateMessageId(): string {
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private activeSessionId: string | null = null;
+  private sessionNameCounter = 0;
 
   /** Create a new session */
   create(name?: string): Session {
+    this.sessionNameCounter++;
     const session: Session = {
       id: generateSessionId(),
-      name: name ?? `会话 ${this.sessions.size + 1}`,
+      name: name ?? `会话 ${this.sessionNameCounter}`,
       createdAt: new Date(),
       updatedAt: new Date(),
       status: 'active',
@@ -163,7 +165,9 @@ export class SessionManager {
     if (!session || session.status !== 'paused') return false;
     session.status = 'active';
     session.updatedAt = new Date();
-    this.activeSessionId = sessionId;
+    if (!this.activeSessionId) {
+      this.activeSessionId = sessionId;
+    }
     return true;
   }
 
@@ -213,10 +217,25 @@ export class SessionManager {
   /** Import a session */
   importSession(json: string): Session | undefined {
     try {
-      const session = JSON.parse(json) as Session;
-      session.id = generateSessionId();
-      session.createdAt = new Date(session.createdAt);
-      session.updatedAt = new Date();
+      const parsed = JSON.parse(json);
+      // Validate required Session fields
+      if (!parsed || typeof parsed !== 'object') return undefined;
+      if (typeof parsed.name !== 'string') return undefined;
+      if (!Array.isArray(parsed.messages)) return undefined;
+      if (!Array.isArray(parsed.executionIds)) return undefined;
+      if (typeof parsed.metadata !== 'object' || parsed.metadata === null) return undefined;
+
+      const session: Session = {
+        id: generateSessionId(),
+        name: parsed.name,
+        createdAt: new Date(parsed.createdAt),
+        updatedAt: new Date(),
+        status: parsed.status ?? 'active',
+        messages: parsed.messages,
+        context: Array.isArray(parsed.context) ? parsed.context : [],
+        executionIds: parsed.executionIds,
+        metadata: parsed.metadata,
+      };
       this.sessions.set(session.id, session);
       return session;
     } catch {

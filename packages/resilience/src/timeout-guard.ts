@@ -50,11 +50,24 @@ export class TimeoutTimer {
     clearTimeout(this.timerId);
     if (this.warningTimerId) clearTimeout(this.warningTimerId);
 
-    this.remaining = this.remaining + additionalMs;
+    const elapsed = Date.now() - this.startTime;
+    const remaining = Math.max(0, this.remaining - elapsed);
+    this.remaining = remaining + additionalMs;
+    this.startTime = Date.now();
+
     this.timerId = setTimeout(() => {
       this.onTimeout();
       this.timerId = null;
     }, this.remaining);
+
+    // Re-create warning timer if originally configured
+    if (this.onWarning) {
+      const warningMs = this.remaining * 0.8; // Use 80% as default warning threshold
+      this.warningTimerId = setTimeout(() => {
+        this.onWarning?.();
+        this.warningTimerId = null;
+      }, warningMs);
+    }
   }
 
   cancel(): void {
@@ -82,6 +95,7 @@ export class TimeoutGuard {
   private readonly config: Required<Pick<TimeoutConfig, 'warningPercentage'>> & TimeoutConfig;
   private activeTimers = new Map<string, TimeoutTimer>();
   private warningCallbacks: Array<(name: string, remainingMs: number) => void> = [];
+  private timerCounter = 0;
 
   constructor(config: TimeoutConfig) {
     this.config = {
@@ -92,7 +106,8 @@ export class TimeoutGuard {
 
   async wrap<T>(fn: () => Promise<T>, timeoutMs?: number, name?: string): Promise<T> {
     const ms = timeoutMs ?? this.config.defaultTimeoutMs;
-    const timerName = name ?? `timer_${Date.now()}`;
+    this.timerCounter++;
+    const timerName = name ?? `timer_${this.timerCounter}_${Date.now()}`;
     let settled = false;
 
     return new Promise<T>((resolve, reject) => {
@@ -149,7 +164,8 @@ export class TimeoutGuard {
 
   createTimer(timeoutMs: number | string, name?: string): TimeoutTimer {
     const ms = typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
-    const timerName = name ?? `timer_${Date.now()}`;
+    this.timerCounter++;
+    const timerName = name ?? `timer_${this.timerCounter}_${Date.now()}`;
 
     const timer = new TimeoutTimer(
       ms,
@@ -162,6 +178,13 @@ export class TimeoutGuard {
       },
       this.config.warningPercentage,
     );
+
+    // Wrap cancel to also remove from activeTimers map
+    const originalCancel = timer.cancel.bind(timer);
+    timer.cancel = () => {
+      originalCancel();
+      this.activeTimers.delete(timerName);
+    };
 
     this.activeTimers.set(timerName, timer);
     return timer;
@@ -183,6 +206,13 @@ export class TimeoutGuard {
 
   onWarning(callback: (name: string, remainingMs: number) => void): void {
     this.warningCallbacks.push(callback);
+  }
+
+  removeWarningCallback(callback: (name: string, remainingMs: number) => void): void {
+    const index = this.warningCallbacks.indexOf(callback);
+    if (index !== -1) {
+      this.warningCallbacks.splice(index, 1);
+    }
   }
 
   getActiveTimerCount(): number {

@@ -1,5 +1,7 @@
 // src/auth-manager.ts - 认证与授权管理
 
+import { createHmac, timingSafeEqual } from 'crypto';
+
 export interface AuthResult {
   success: boolean;
   userId?: string;
@@ -72,7 +74,10 @@ export class TokenAuthStrategy implements AuthStrategy {
   private secretKey: string;
   private tokens: Map<string, TokenPayload> = new Map();
 
-  constructor(secretKey: string = 'default-secret-key') {
+  constructor(secretKey?: string) {
+    if (!secretKey) {
+      throw new Error('TokenAuthStrategy requires a secretKey parameter. Using a hardcoded default is a security risk.');
+    }
     this.secretKey = secretKey;
   }
 
@@ -112,8 +117,12 @@ export class TokenAuthStrategy implements AuthStrategy {
       type: 'access',
     };
 
-    // Simple token generation (in production, use proper JWT)
-    const token = `tok_${Buffer.from(JSON.stringify(payload)).toString('base64url')}_${Date.now()}`;
+    const payloadStr = JSON.stringify(payload);
+    const payloadB64 = Buffer.from(payloadStr).toString('base64url');
+    const signature = createHmac('sha256', this.secretKey)
+      .update(payloadB64)
+      .digest('base64url');
+    const token = `tok_${payloadB64}.${signature}`;
     this.tokens.set(token, payload);
     return token;
   }
@@ -207,6 +216,11 @@ export class CertificateAuthStrategy implements AuthStrategy {
 export class AuditLog {
   private entries: AuditLogEntry[] = [];
   private listeners: Array<(entry: AuditLogEntry) => void> = [];
+  private maxSize: number;
+
+  constructor(maxSize: number = 10000) {
+    this.maxSize = maxSize;
+  }
 
   record(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): AuditLogEntry {
     const fullEntry: AuditLogEntry = {
@@ -215,6 +229,10 @@ export class AuditLog {
       timestamp: Date.now(),
     };
     this.entries.push(fullEntry);
+    // Enforce max size to prevent unbounded memory growth
+    while (this.entries.length > this.maxSize) {
+      this.entries.shift();
+    }
     for (const listener of this.listeners) {
       listener(fullEntry);
     }

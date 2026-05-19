@@ -18,7 +18,7 @@ let phaseCounter = 0;
 
 function generatePhaseId(): string {
   phaseCounter++;
-  return `phase-${Date.now().toString(36)}-${phaseCounter.toString(36).padStart(4, '0')}`;
+  return `phase-${Date.now().toString(36)}-${phaseCounter.toString(36)}`;
 }
 
 // ---- SmartOrchestrator Class ----
@@ -138,6 +138,23 @@ export class SmartOrchestrator {
 
     try {
       for (const phase of this.currentPlan.phases) {
+        // Check for cancellation before each phase
+        if (this.state === 'idle') {
+          this.logger.info('Execution cancelled');
+          return;
+        }
+
+        // Wait while paused
+        while (this.state === 'paused') {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        // Check again after potential pause
+        if (this.state === 'idle') {
+          this.logger.info('Execution cancelled');
+          return;
+        }
+
         phase.status = 'running';
         phase.startedAt = new Date();
 
@@ -169,13 +186,34 @@ export class SmartOrchestrator {
             await this.considerReorder(results);
           }
         } else {
+          let phaseFailed = false;
           for (const taskId of phase.tasks) {
+            // Check for cancellation/pause before each sequential task
+            if (this.state === 'idle') {
+              this.logger.info('Execution cancelled');
+              return;
+            }
+            while (this.state === 'paused') {
+              await new Promise((r) => setTimeout(r, 50));
+            }
+
             try {
               const result = await taskHandler(taskId);
               this.taskResults.set(taskId, result);
+              if (!result.success) phaseFailed = true;
             } catch {
               this.taskResults.set(taskId, { success: false, duration: 0 });
+              phaseFailed = true;
             }
+          }
+
+          if (phaseFailed) {
+            phase.status = 'failed';
+            phase.completedAt = new Date();
+            this.onPhaseComplete?.(phase);
+            this.state = 'failed';
+            this.logger.warn('Sequential phase failed');
+            return;
           }
         }
 
@@ -248,6 +286,8 @@ export class SmartOrchestrator {
     this.currentPlan = null;
     this.reorderHistory = [];
     this.taskResults.clear();
+    this.onPhaseComplete = undefined;
+    this.onReorder = undefined;
     this.logger.info('Orchestrator reset');
   }
 }

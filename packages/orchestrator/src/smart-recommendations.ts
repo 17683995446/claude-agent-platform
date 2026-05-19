@@ -10,7 +10,7 @@ let recCounter = 0;
 
 function generateRecId(): string {
   recCounter++;
-  return `rec-${Date.now().toString(36)}-${recCounter.toString(36).padStart(4, '0')}`;
+  return `rec-${Date.now().toString(36)}-${recCounter.toString(36)}`;
 }
 
 // ---- Project feature keywords ----
@@ -94,6 +94,7 @@ export class SmartRecommendations {
   private recommendations: Recommendation[] = [];
   private dismissedIds: Set<string> = new Set();
   private maxRecommendations: number;
+  private maxDismissedIds: number = 200;
 
   constructor(maxRecommendations: number = 50) {
     this.maxRecommendations = maxRecommendations;
@@ -262,6 +263,13 @@ export class SmartRecommendations {
   /** Dismiss a recommendation */
   dismiss(id: string): void {
     this.dismissedIds.add(id);
+    // Trim dismissed IDs if exceeding max size
+    if (this.dismissedIds.size > this.maxDismissedIds) {
+      const toRemove = Array.from(this.dismissedIds).slice(0, this.dismissedIds.size - this.maxDismissedIds);
+      for (const rid of toRemove) {
+        this.dismissedIds.delete(rid);
+      }
+    }
   }
 
   /** Clear all recommendations */

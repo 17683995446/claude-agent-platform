@@ -127,7 +127,7 @@ export class WorkflowErrorHandler {
     // Add to dead letter queue if failed
     if (resolution.action === 'fail') {
       this.deadLetterQueue.push({
-        id: `${context.stepId}-${Date.now()}`,
+        id: `${context.stepId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         context,
         timestamp: new Date(),
         resolution,
@@ -148,8 +148,8 @@ export class WorkflowErrorHandler {
         if (!policy || context.attempt >= policy.count) {
           return { action: 'fail', error: error.message, retried: context.attempt > 0 };
         }
-        if (!this.isRetryable(error) && context.attempt > 0) {
-          return { action: 'fail', error: `Non-retryable error: ${error.message}`, retried: true };
+        if (!this.isRetryable(error)) {
+          return { action: 'fail', error: `Non-retryable error: ${error.message}`, retried: context.attempt > 0 };
         }
         let delay = policy.delay;
         if (policy.backoff === 'exponential') {

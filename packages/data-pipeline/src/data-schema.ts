@@ -336,12 +336,13 @@ export class DataSchemaManager {
       const v2 = versions[i + direction];
       const key = `${schemaName}:${v1}:${v2}`;
       const steps = this.migrations.get(key);
-      if (steps) {
-        allSteps.push(...steps);
+      if (!steps) {
+        return undefined;
       }
+      allSteps.push(...steps);
     }
 
-    return allSteps.length > 0 ? allSteps : undefined;
+    return allSteps;
   }
 
   private isCompatibleType(from: string, to: string): boolean {
@@ -359,8 +360,8 @@ export class DataSchemaManager {
 }
 
 function semverCompare(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
+  const pa = a.split('.').map(s => Number(s.replace(/[^0-9].*/, '') || '0'));
+  const pb = b.split('.').map(s => Number(s.replace(/[^0-9].*/, '') || '0'));
 
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const na = pa[i] ?? 0;

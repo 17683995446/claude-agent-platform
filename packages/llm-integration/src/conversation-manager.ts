@@ -98,22 +98,23 @@ export class ConversationManager {
     return response;
   }
 
-  /** 管理上下文窗口 - 保留最近的消息 */
+  /**
+   * 管理上下文窗口 - 保留最近的消息，确保以 user 消息开头。
+   * 如果切片后第一条消息是 assistant 消息，则从开头移除直到遇到 user 消息。
+   */
   private manageContextWindow(messages: LLMMessage[], maxMessages: number): LLMMessage[] {
     if (messages.length <= maxMessages) {
       return [...messages];
     }
 
-    // 保留最近的消息，但确保成对保留 (user + assistant)
-    const recentMessages = messages.slice(-maxMessages);
+    let sliced = messages.slice(-maxMessages);
 
-    // 确保第一条消息是 user 消息
-    const firstUserIndex = recentMessages.findIndex((m) => m.role === 'user');
-    if (firstUserIndex > 0) {
-      return recentMessages.slice(firstUserIndex);
+    // Ensure the result always starts with a user message
+    while (sliced.length > 0 && sliced[0].role !== 'user') {
+      sliced = sliced.slice(1);
     }
 
-    return recentMessages;
+    return sliced;
   }
 
   /** 获取对话历史 */
@@ -220,6 +221,14 @@ export class ConversationManager {
     return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
+  /**
+   * Generate a deterministic message ID based on conversation ID and index.
+   *
+   * @designLimitation This produces fragile IDs for forked conversations because
+   * message indices shift when messages are added. If a conversation is forked and
+   * then new messages are appended to the original, the generated IDs for the
+   * forked copy may no longer match. Consider using UUIDs for production use.
+   */
   private generateMessageId(conversationId: string, index: number): string {
     return `${conversationId}_msg_${index}`;
   }

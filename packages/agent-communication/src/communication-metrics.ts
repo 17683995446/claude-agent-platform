@@ -48,9 +48,34 @@ export class CommunicationMetrics {
   private agentStats: Map<string, { sent: number; received: number; failed: number; latencies: number[]; lastActivity: number }> = new Map();
   private topicStats: Map<string, { count: number; errors: number; latencies: number[]; lastActivity: number }> = new Map();
   private windowStart = Date.now();
+  // COMM-23: Running counters for O(1) getMetrics
+  private _totalMessages = 0;
+  private _totalErrors = 0;
+  private _totalLatency = 0;
+  private _latencyCount = 0;
+  private _allLatencies: number[] = [];
+  private static readonly MAX_EVENTS_SIZE = 10000;
 
   recordMessage(event: MessageEvent): void {
+    // COMM-22: Trim events array if it exceeds max size
+    if (this.events.length >= CommunicationMetrics.MAX_EVENTS_SIZE) {
+      this.events.shift();
+    }
     this.events.push(event);
+
+    // COMM-23: Update running counters
+    this._totalMessages++;
+    if (event.eventType === 'failed' || event.eventType === 'timeout') {
+      this._totalErrors++;
+    }
+    if (event.latency !== undefined) {
+      this._totalLatency += event.latency;
+      this._latencyCount++;
+      this._allLatencies.push(event.latency);
+      if (this._allLatencies.length > 10000) {
+        this._allLatencies.shift();
+      }
+    }
 
     // Update agent stats
     const agent = this.agentStats.get(event.agentId) ?? {
@@ -93,23 +118,20 @@ export class CommunicationMetrics {
     const now = Date.now();
     const windowDuration = (now - this.windowStart) / 1000 || 1;
 
-    const totalMessages = this.events.length;
-    const totalErrors = this.events.filter(
-      (e) => e.eventType === 'failed' || e.eventType === 'timeout',
-    ).length;
+    // COMM-23: Use running counters for O(1) total counts
+    const totalMessages = this._totalMessages;
+    const totalErrors = this._totalErrors;
+    const averageLatency = this._latencyCount > 0 ? this._totalLatency / this._latencyCount : 0;
 
-    const allLatencies = this.events
-      .filter((e) => e.latency !== undefined)
-      .map((e) => e.latency!);
-
-    const sorted = [...allLatencies].sort((a, b) => a - b);
+    // Percentiles still need sorted array, but use the trimmed _allLatencies
+    const sorted = [...this._allLatencies].sort((a, b) => a - b);
 
     return {
       totalMessages,
       messagesPerSecond: totalMessages / windowDuration,
       totalErrors,
       errorRate: totalMessages > 0 ? totalErrors / totalMessages : 0,
-      averageLatency: allLatencies.length > 0 ? allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length : 0,
+      averageLatency,
       p50Latency: this.percentile(sorted, 50),
       p95Latency: this.percentile(sorted, 95),
       p99Latency: this.percentile(sorted, 99),
@@ -184,5 +206,10 @@ export class CommunicationMetrics {
     this.agentStats.clear();
     this.topicStats.clear();
     this.windowStart = Date.now();
+    this._totalMessages = 0;
+    this._totalErrors = 0;
+    this._totalLatency = 0;
+    this._latencyCount = 0;
+    this._allLatencies = [];
   }
 }

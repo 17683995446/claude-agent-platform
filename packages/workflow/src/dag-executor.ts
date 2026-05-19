@@ -42,6 +42,15 @@ export class DAGExecutor {
     const executionOrder: string[] = [];
     const timing: DAGNodeTiming[] = [];
 
+    // Validate that all dependency references point to existing nodes
+    for (const node of nodes) {
+      for (const dep of node.dependencies) {
+        if (!nodeMap.has(dep)) {
+          throw new Error(`Node "${node.id}" depends on "${dep}" which does not exist`);
+        }
+      }
+    }
+
     // Detect cycles
     this.detectCycle(nodes);
 
@@ -109,18 +118,27 @@ export class DAGExecutor {
         })
       );
 
-      // Check for failures
+      // Check for failures - collect all results before returning
+      let hasFailure = false;
+      let failureError: string | undefined;
       for (let i = 0; i < results.length; i++) {
         if (results[i].status === 'rejected') {
+          hasFailure = true;
           const err = results[i].reason;
-          return {
-            outputs,
-            executionOrder,
-            timing,
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
+          failureError = err instanceof Error ? err.message : String(err);
+          // Still update completed set for fulfilled nodes
+          break;
         }
+      }
+
+      if (hasFailure) {
+        return {
+          outputs,
+          executionOrder,
+          timing,
+          success: false,
+          error: failureError!,
+        };
       }
 
       // Update in-degrees and find newly ready nodes

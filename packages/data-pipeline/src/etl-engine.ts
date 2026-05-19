@@ -235,6 +235,7 @@ export class ETLEngine {
           let success = false;
           let attempts = 0;
 
+          // Note: loop runs maxRetries+1 times (initial attempt + retries), which is intentional
           while (!success && attempts <= maxRetries) {
             try {
               for (const t of config.transform.transforms) {
@@ -260,6 +261,12 @@ export class ETLEngine {
               success = true;
             } catch (e) {
               attempts++;
+              if (errorStrategy === 'skip') {
+                const errorMsg = `Transform error: ${(e as Error).message}`;
+                errors.push({ record, error: errorMsg });
+                recordsSkipped++;
+                break;
+              }
               if (attempts > maxRetries) {
                 const errorMsg = `Transform error: ${(e as Error).message}`;
                 errors.push({ record, error: errorMsg });

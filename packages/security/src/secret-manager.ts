@@ -1,5 +1,7 @@
 // src/secret-manager.ts - 密钥与敏感数据管理
 
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+
 export interface SecretProvider {
   get(key: string): Promise<string | undefined>;
   set(key: string, value: string): Promise<void>;
@@ -61,23 +63,45 @@ export class FileSecretProvider implements SecretProvider {
   private secrets: Map<string, string> = new Map();
   private encryptionKey: string;
   private filePath: string;
+  private algorithm = 'aes-256-cbc';
 
-  constructor(encryptionKey: string = 'default-encryption-key', filePath: string = '/tmp/secrets.enc') {
-    this.encryptionKey = encryptionKey;
+  constructor(encryptionKey?: string, filePath: string = '/tmp/secrets.enc') {
+    if (!encryptionKey) {
+      throw new Error('FileSecretProvider requires an encryptionKey parameter. Using a hardcoded default is a security risk.');
+    }
+    // Ensure the key is exactly 32 bytes for AES-256
+    this.encryptionKey = Buffer.from(encryptionKey).slice(0, 32).length >= 16
+      ? Buffer.from(encryptionKey.padEnd(32, '0').slice(0, 32)).toString('utf-8')
+      : (() => { throw new Error('encryptionKey must be at least 16 characters long for AES encryption.'); })();
     this.filePath = filePath;
   }
 
   private async encrypt(value: string): Promise<string> {
-    // Simulate AES-256-GCM encryption
-    const encoded = Buffer.from(value).toString('base64');
-    return `enc:${encoded}:${Buffer.from(this.encryptionKey).toString('base64').slice(0, 8)}`;
+    const iv = randomBytes(16);
+    const keyBuffer = Buffer.from(this.encryptionKey.slice(0, 32), 'utf-8');
+    const cipher = createCipheriv(this.algorithm, keyBuffer, iv);
+    let encrypted = cipher.update(value, 'utf-8', 'hex');
+    encrypted += cipher.final('hex');
+    const ivHex = iv.toString('hex');
+    return `enc:${ivHex}:${encrypted}`;
   }
 
   private async decrypt(encrypted: string): Promise<string> {
     if (!encrypted.startsWith('enc:')) return encrypted;
     const parts = encrypted.split(':');
     if (parts.length < 3) return encrypted;
-    return Buffer.from(parts[1], 'base64').toString('utf-8');
+    const iv = Buffer.from(parts[1], 'hex');
+    const encryptedData = parts.slice(2).join(':');
+    const keyBuffer = Buffer.from(this.encryptionKey.slice(0, 32), 'utf-8');
+    try {
+      const decipher = createDecipheriv(this.algorithm, keyBuffer, iv);
+      let decrypted = decipher.update(encryptedData, 'hex', 'utf-8');
+      decrypted += decipher.final('utf-8');
+      return decrypted;
+    } catch {
+      // If decryption fails, return original (for backward compatibility with old format)
+      return encrypted;
+    }
   }
 
   async get(key: string): Promise<string | undefined> {

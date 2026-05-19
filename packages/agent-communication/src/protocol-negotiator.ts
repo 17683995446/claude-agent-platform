@@ -49,6 +49,11 @@ function versionGte(a: string, b: string): boolean {
 
 export class ProtocolNegotiator {
   private capabilities: Map<string, AgentCapabilities> = new Map();
+  private localCapabilities: AgentCapabilities | null = null;
+
+  setLocalCapabilities(capabilities: AgentCapabilities): void {
+    this.localCapabilities = capabilities;
+  }
 
   advertise(capabilities: AgentCapabilities): void {
     this.capabilities.set(capabilities.agentId, capabilities);
@@ -95,7 +100,11 @@ export class ProtocolNegotiator {
       ['aes-256-gcm', 'tls', 'none'],
       remote.supportedFeatures.encryption,
     );
-    const streaming = remote.supportedFeatures.streaming;
+    // COMM-19: AND local and remote streaming capabilities.
+    // When no local capabilities are configured, fall back to remote value (backward compatible).
+    const streaming = this.localCapabilities
+      ? (this.localCapabilities.supportedFeatures.streaming && remote.supportedFeatures.streaming)
+      : remote.supportedFeatures.streaming;
 
     return {
       protocol: selected.protocol,
@@ -118,11 +127,26 @@ export class ProtocolNegotiator {
     // Priority order for protocols
     const priority: ProtocolType[] = ['grpc-like', 'json-rpc', 'graphql', 'custom-binary'];
 
+    const localProtocols = this.localCapabilities?.protocols;
+
     const common: ProtocolVersion[] = [];
     for (const proto of priority) {
       const remoteVersion = remote.protocols.find((p) => p.protocol === proto);
+      // COMM-18: Check both local and remote capabilities when local is set.
+      // When no local capabilities are configured, fall back to accepting all remote protocols
+      // (backward compatible behavior).
       if (remoteVersion) {
-        common.push(remoteVersion);
+        if (localProtocols) {
+          const localVersion = localProtocols.find((p) => p.protocol === proto);
+          if (!localVersion) continue;
+          // Use the lower version of the two
+          const version = versionGte(localVersion.version, remoteVersion.version)
+            ? remoteVersion.version
+            : localVersion.version;
+          common.push({ ...remoteVersion, version });
+        } else {
+          common.push(remoteVersion);
+        }
       }
     }
     return common;

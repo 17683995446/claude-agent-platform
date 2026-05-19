@@ -27,10 +27,12 @@ interface PendingRequest {
   resolve: (message: Message) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  senderId: string;
 }
 
+let idCounter = 0;
 function generateId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  return `msg_${Date.now()}_${++idCounter}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export class MessageBus {
@@ -38,8 +40,10 @@ export class MessageBus {
   private deadLetterQueue: Message[] = [];
   private pendingRequests: Map<string, PendingRequest> = new Map();
   private messageQueue: Map<string, Message[]> = new Map();
-  private processing = false;
+  private processingTopics: Set<string> = new Set();
   private handlerCounter = 0;
+  private static readonly MAX_DEAD_LETTER_QUEUE_SIZE = 1000;
+  private static readonly MAX_QUEUE_SIZE = 10000;
 
   publish(topic: string, message: Partial<Message> & { payload: unknown }): void {
     const fullMessage: Message = {
@@ -61,17 +65,25 @@ export class MessageBus {
       this.pendingRequests.has(fullMessage.correlationId)
     ) {
       const pending = this.pendingRequests.get(fullMessage.correlationId)!;
-      clearTimeout(pending.timer);
-      this.pendingRequests.delete(fullMessage.correlationId);
-      pending.resolve(fullMessage);
-      return;
+      // COMM-5: Reject responses from the same sender to prevent self-resolution
+      if (fullMessage.sender !== pending.senderId) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(fullMessage.correlationId);
+        pending.resolve(fullMessage);
+      }
+      // COMM-2: Do NOT return early - still enqueue for subscribers
     }
 
     // Enqueue for FIFO ordering per topic
     if (!this.messageQueue.has(topic)) {
       this.messageQueue.set(topic, []);
     }
-    this.messageQueue.get(topic)!.push(fullMessage);
+    const queue = this.messageQueue.get(topic)!;
+    if (queue.length >= MessageBus.MAX_QUEUE_SIZE) {
+      // Drop oldest message to prevent unbounded growth
+      queue.shift();
+    }
+    queue.push(fullMessage);
 
     this.processQueue(topic);
   }
@@ -95,18 +107,20 @@ export class MessageBus {
 
   async request(topic: string, payload: unknown, timeout: number = 5000): Promise<Message> {
     const correlationId = generateId();
+    const senderId = `self_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     return new Promise<Message>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(correlationId);
         reject(new Error(`Request timeout for topic "${topic}" after ${timeout}ms`));
       }, timeout);
 
-      this.pendingRequests.set(correlationId, { resolve, reject, timer });
+      this.pendingRequests.set(correlationId, { resolve, reject, timer, senderId });
 
       this.publish(topic, {
         type: 'request',
         payload,
         correlationId,
+        sender: senderId,
       });
     });
   }
@@ -120,23 +134,26 @@ export class MessageBus {
   }
 
   private processQueue(topic: string): void {
-    if (this.processing) return;
-    this.processing = true;
+    if (this.processingTopics.has(topic)) return;
+    this.processingTopics.add(topic);
 
     const queue = this.messageQueue.get(topic);
     if (!queue || queue.length === 0) {
-      this.processing = false;
+      this.processingTopics.delete(topic);
       return;
     }
 
     const message = queue.shift()!;
-    this.processing = false;
+    this.processingTopics.delete(topic);
 
     const delivered = this.deliverMessage(topic, message);
     if (!delivered) {
       // Try wildcard matches
       const wildcardDelivered = this.deliverToWildcards(topic, message);
       if (!wildcardDelivered) {
+        if (this.deadLetterQueue.length >= MessageBus.MAX_DEAD_LETTER_QUEUE_SIZE) {
+          this.deadLetterQueue.shift();
+        }
         this.deadLetterQueue.push(message);
       }
     }
@@ -155,8 +172,9 @@ export class MessageBus {
     for (const sub of subs.values()) {
       try {
         sub.handler(message);
-      } catch {
-        // Handler error - continue delivering to other subscribers
+      } catch (err) {
+        // COMM-31: Log handler errors instead of silently swallowing
+        console.error(`[MessageBus] Handler error for topic "${topic}":`, err);
       }
     }
     return true;
@@ -174,8 +192,9 @@ export class MessageBus {
           try {
             sub.handler(message);
             delivered = true;
-          } catch {
-            // Handler error
+          } catch (err) {
+            // COMM-31: Log handler errors
+            console.error(`[MessageBus] Wildcard handler error for pattern "${pattern}":`, err);
           }
         }
       }
@@ -201,6 +220,6 @@ export class MessageBus {
     this.pendingRequests.forEach((p) => clearTimeout(p.timer));
     this.pendingRequests.clear();
     this.messageQueue.clear();
-    this.processing = false;
+    this.processingTopics.clear();
   }
 }

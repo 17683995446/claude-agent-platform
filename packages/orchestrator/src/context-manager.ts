@@ -10,7 +10,7 @@ let contextCounter = 0;
 
 function generateContextId(): string {
   contextCounter++;
-  return `ctx-${Date.now().toString(36)}-${contextCounter.toString(36).padStart(4, '0')}`;
+  return `ctx-${Date.now().toString(36)}-${contextCounter.toString(36)}`;
 }
 
 // ---- Rough token estimation (1 token ~ 4 chars for English, ~2 chars for Chinese) ----
@@ -31,13 +31,13 @@ export class ContextManager {
   private persistencePath: string | null;
 
   constructor(config?: Partial<ContextWindowConfig>, persistencePath?: string) {
-    this.config = {
-      maxTokens: config?.maxTokens ?? 128000,
-      reservedTokens: config?.reservedTokens ?? 1000,
-      compressionThreshold: config?.compressionThreshold ?? 0.8,
-      strategy: config?.strategy ?? 'lru',
-      ...config,
+    const defaults: ContextWindowConfig = {
+      maxTokens: 128000,
+      reservedTokens: 1000,
+      compressionThreshold: 0.8,
+      strategy: 'lru',
     };
+    this.config = { ...defaults, ...config };
     this.persistencePath = persistencePath ?? null;
   }
 
@@ -88,6 +88,12 @@ export class ContextManager {
       this.compress();
     }
 
+    // Post-compression space verification
+    if (this.getTotalTokens() + tokenCount > this.config.maxTokens) {
+      // Still over budget after compression; skip adding to prevent overflow
+      return contextEntry;
+    }
+
     this.entries.set(contextEntry.id, contextEntry);
     return contextEntry;
   }
@@ -104,21 +110,13 @@ export class ContextManager {
   /** Get entries by type */
   getByType(type: ContextEntry['type']): ContextEntry[] {
     return Array.from(this.entries.values())
-      .filter((e) => e.type === type)
-      .map((e) => {
-        e.lastAccessedAt = new Date();
-        return e;
-      });
+      .filter((e) => e.type === type);
   }
 
   /** Get entries by key pattern */
   getByKeyPattern(pattern: RegExp): ContextEntry[] {
     return Array.from(this.entries.values())
-      .filter((e) => pattern.test(e.key))
-      .map((e) => {
-        e.lastAccessedAt = new Date();
-        return e;
-      });
+      .filter((e) => pattern.test(e.key));
   }
 
   /** Remove a context entry */

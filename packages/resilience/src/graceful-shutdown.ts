@@ -135,9 +135,9 @@ export class GracefulShutdownManager {
   private setupSignalHandlers(): void {
     for (const signal of this.config.signals) {
       const handler = () => {
-        this.shutdown(`Received ${signal}`).catch(() => {
-          process.exit(1);
-        });
+        this.shutdown(`Received ${signal}`)
+          .then(() => process.exit(0))
+          .catch(() => process.exit(1));
       };
       process.on(signal, handler);
       this.signalHandlers.set(signal, handler);
@@ -145,8 +145,10 @@ export class GracefulShutdownManager {
   }
 
   private getPhaseTimeout(phase: ShutdownPhase): number {
-    const handler = this.handlers.find(h => h.phase === phase && h.timeout);
-    if (handler?.timeout) return handler.timeout;
+    const phaseHandlers = this.handlers.filter(h => h.phase === phase && h.timeout);
+    if (phaseHandlers.length > 0) {
+      return Math.max(...phaseHandlers.map(h => h.timeout!));
+    }
 
     switch (phase) {
       case 'stop_accepting':
@@ -165,6 +167,8 @@ export class GracefulShutdownManager {
   private async executeHandlers(handlers: ShutdownHandler[], timeout: number): Promise<void> {
     if (handlers.length === 0) return;
 
+    const timerIds: ReturnType<typeof setTimeout>[] = [];
+
     const results = await Promise.race([
       Promise.all(
         handlers.map(async h => {
@@ -172,9 +176,10 @@ export class GracefulShutdownManager {
             const handlerTimeout = h.timeout ?? timeout;
             await Promise.race([
               h.handler(),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Handler ${h.name} timed out`)), handlerTimeout),
-              ),
+              new Promise<never>((_, reject) => {
+                const id = setTimeout(() => reject(new Error(`Handler ${h.name} timed out`)), handlerTimeout);
+                timerIds.push(id);
+              }),
             ]);
             this.completedHandlers.push(h.name);
           } catch (error) {
@@ -182,12 +187,18 @@ export class GracefulShutdownManager {
           }
         }),
       ),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Phase timeout after ${timeout}ms`)), timeout),
-      ),
+      new Promise<never>((_, reject) => {
+        const id = setTimeout(() => reject(new Error(`Phase timeout after ${timeout}ms`)), timeout);
+        timerIds.push(id);
+      }),
     ]).catch(() => {
       // Phase timed out, continue to next phase
     });
+
+    // Clear any remaining timers that haven't fired yet
+    for (const id of timerIds) {
+      clearTimeout(id);
+    }
   }
 
   private emitEvent(phase: ShutdownPhase, status: ShutdownStatus): void {

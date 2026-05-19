@@ -16,12 +16,12 @@ let auditCounter = 0;
 
 function generatePermId(): string {
   permCounter++;
-  return `perm-${Date.now().toString(36)}-${permCounter.toString(36).padStart(4, '0')}`;
+  return `perm-${Date.now().toString(36)}-${permCounter.toString(36)}`;
 }
 
 function generateAuditId(): string {
   auditCounter++;
-  return `audit-${Date.now().toString(36)}-${auditCounter.toString(36).padStart(4, '0')}`;
+  return `audit-${Date.now().toString(36)}-${auditCounter.toString(36)}`;
 }
 
 // ---- Default sandbox config ----
@@ -40,7 +40,6 @@ const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
 
 export class PermissionDelegation {
   private rules: Map<string, PermissionRule> = new Map();
-  private auditLog: AuditLogEntry[] = new Map() as unknown as AuditLogEntry[];
   private sandboxConfig: SandboxConfig;
   private auditLogMap: Map<string, AuditLogEntry> = new Map();
 

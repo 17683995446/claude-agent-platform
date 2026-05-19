@@ -1,5 +1,7 @@
 // src/security-audit.ts - 安全审计日志
 
+import { createHash } from 'crypto';
+
 export type AuditEventType =
   | 'authentication'
   | 'authorization'
@@ -44,6 +46,7 @@ export interface AuditStorage {
   query(query: AuditQuery): Promise<AuditEntry[]>;
   getLatest(): Promise<AuditEntry | undefined>;
   clear(): Promise<void>;
+  removeBefore?(timestamp: number): Promise<number>;
 }
 
 export interface RetentionPolicy {
@@ -118,12 +121,21 @@ class InMemoryAuditStorage implements AuditStorage {
     this.entries = [];
   }
 
+  async removeBefore(timestamp: number): Promise<number> {
+    const before = this.entries.length;
+    this.entries = this.entries.filter((e) => e.timestamp >= timestamp);
+    return before - this.entries.length;
+  }
+
   get size(): number {
     return this.entries.length;
   }
 }
 
 // ============ File Storage (JSONL) ============
+// NOTE: This is an in-memory simulation. File I/O is not implemented.
+// In production, this should write entries to disk using appendFile/fs.promises
+// to ensure audit entries survive process restarts.
 class FileAuditStorage implements AuditStorage {
   private filePath: string;
   private entries: AuditEntry[] = [];
@@ -183,20 +195,18 @@ class FileAuditStorage implements AuditStorage {
   async clear(): Promise<void> {
     this.entries = [];
   }
+
+  async removeBefore(timestamp: number): Promise<number> {
+    const before = this.entries.length;
+    this.entries = this.entries.filter((e) => e.timestamp >= timestamp);
+    return before - this.entries.length;
+  }
 }
 
 // ============ Hash Chain for Integrity ============
 function computeHash(data: string, previousHash: string): string {
   const combined = `${previousHash}:${data}`;
-  // Simple hash simulation using Bun's built-in crypto
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(combined);
-  let hash = 0;
-  for (let i = 0; i < dataBuffer.length; i++) {
-    const char = dataBuffer[i];
-    hash = ((hash << 5) - hash + char) | 0;
-  }
-  return Math.abs(hash).toString(16).padStart(16, '0');
+  return createHash('sha256').update(combined).digest('hex');
 }
 
 // ============ Main Audit Log ============
@@ -374,6 +384,14 @@ export class SecurityAuditLog {
   }
 
   /**
+   * Destroy the audit log - stop retention timer and clean up resources
+   */
+  destroy(): void {
+    this.stopRetention();
+    this.listeners = [];
+  }
+
+  /**
    * Enforce retention policy
    */
   async enforceRetention(): Promise<number> {
@@ -383,20 +401,24 @@ export class SecurityAuditLog {
     // Remove entries older than maxAge
     if (this.retentionPolicy.maxAge) {
       const cutoff = Date.now() - this.retentionPolicy.maxAge;
-      for (const entry of entries) {
-        if (entry.timestamp < cutoff) {
-          removed++;
-        }
+      if (this.storage.removeBefore) {
+        removed += await this.storage.removeBefore(cutoff);
       }
     }
 
-    // Remove excess entries
+    // Remove excess entries (keep newest)
     if (this.retentionPolicy.maxEntries && entries.length > this.retentionPolicy.maxEntries) {
-      const excess = entries.length - this.retentionPolicy.maxEntries;
-      removed += excess;
+      const sortedEntries = [...entries].sort((a, b) => a.timestamp - b.timestamp);
+      const excessCount = entries.length - this.retentionPolicy.maxEntries;
+      // Remove oldest entries beyond the limit
+      if (this.storage.removeBefore) {
+        const cutoffTimestamp = sortedEntries[excessCount - 1].timestamp;
+        // Only remove if we haven't already removed enough via maxAge
+        const additionalRemoved = await this.storage.removeBefore(cutoffTimestamp + 1);
+        removed += Math.max(0, additionalRemoved - removed);
+      }
     }
 
-    // In a real implementation, this would actually remove entries
     return removed;
   }
 

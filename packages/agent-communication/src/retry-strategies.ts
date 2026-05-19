@@ -25,6 +25,7 @@ interface CircuitBreakerState {
   failureCount: number;
   lastFailureTime: number;
   successCount: number;
+  halfOpenProbes: number; // COMM-26: track probe requests in half-open state
 }
 
 interface RetryBudgetState {
@@ -57,28 +58,37 @@ export class RetryManager {
       onRecovery: options?.onRecovery,
     };
 
-    // Check circuit breaker
-    if (opts.strategy === 'circuit_breaker' || true) {
+    // Check circuit breaker - always check regardless of strategy
+    // COMM-8: Removed `|| true` hack; circuit breaker protects all strategies
+    {
       const circuit = this.getCircuitStateInternal(opts.destination);
       if (circuit.state === 'open') {
         if (Date.now() - circuit.lastFailureTime > this.defaultOptions.circuitBreakerResetTime) {
           circuit.state = 'half-open';
+          circuit.halfOpenProbes = 0;
         } else {
           throw new Error(`Circuit breaker open for destination: ${opts.destination}`);
         }
       }
-    }
-
-    // Check retry budget
-    if (options?.retryBudget !== undefined) {
-      const budget = this.getRetryBudget(opts.destination, options.retryBudget, options.retryBudgetWindow ?? 60000);
-      if (budget.retries >= options.retryBudget) {
-        throw new Error(`Retry budget exhausted for destination: ${opts.destination}`);
+      // COMM-26: Limit probe requests in half-open state
+      if (circuit.state === 'half-open' && circuit.halfOpenProbes >= 3) {
+        throw new Error(`Circuit breaker half-open: probe limit reached for destination: ${opts.destination}`);
+      }
+      if (circuit.state === 'half-open') {
+        circuit.halfOpenProbes++;
       }
     }
 
+    // COMM-27: Moved retry budget check inside retry loop for atomicity
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
+      // COMM-27: Check retry budget atomically inside the loop
+      if (attempt > 0 && options?.retryBudget !== undefined) {
+        const budget = this.getRetryBudget(opts.destination, options.retryBudget, options.retryBudgetWindow ?? 60000);
+        if (budget.retries >= options.retryBudget) {
+          throw new Error(`Retry budget exhausted for destination: ${opts.destination}`);
+        }
+      }
       try {
         const result = await fn();
         this.onSuccess(opts.destination);
@@ -112,6 +122,7 @@ export class RetryManager {
       failureCount: 0,
       lastFailureTime: 0,
       successCount: 0,
+      halfOpenProbes: 0,
     });
   }
 
@@ -122,6 +133,7 @@ export class RetryManager {
         failureCount: 0,
         lastFailureTime: 0,
         successCount: 0,
+        halfOpenProbes: 0,
       });
     }
     return this.circuitStates.get(destination)!;
@@ -150,6 +162,7 @@ export class RetryManager {
     if (circuit.state === 'half-open') {
       circuit.state = 'closed';
       circuit.failureCount = 0;
+      circuit.halfOpenProbes = 0;
     }
     circuit.successCount++;
   }

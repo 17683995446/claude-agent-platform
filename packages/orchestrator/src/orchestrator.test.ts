@@ -304,7 +304,7 @@ describe('SmartOrchestrator', () => {
     orchestrator.createPlan(decomposition);
 
     await orchestrator.execute(async () => ({ success: false, duration: 0 }));
-    expect(orchestrator.getState()).toBe('completed');
+    expect(orchestrator.getState()).toBe('failed');
   });
 
   it('should pause and resume', () => {

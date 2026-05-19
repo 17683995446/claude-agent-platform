@@ -180,7 +180,7 @@ export class DataJoiner {
       let matched = false;
       for (let i = 0; i < right.length; i++) {
         const rightRecord = right[i];
-        if (matchedRightIndices.has(i) && type === 'inner') continue;
+        if (matchedRightIndices.has(i) && type !== 'inner') continue;
 
         const allConditionsMet = conditions.every(c =>
           leftRecord[c.leftKey] === rightRecord[c.rightKey]
@@ -226,7 +226,7 @@ export class DataJoiner {
     for (const leftRecord of left) {
       let matched = false;
       for (let i = 0; i < right.length; i++) {
-        if (matchedRightIndices.has(i) && type === 'inner') continue;
+        if (matchedRightIndices.has(i) && type !== 'inner') continue;
         if (predicate(leftRecord, right[i])) {
           matchedRightIndices.add(i);
           results.push({

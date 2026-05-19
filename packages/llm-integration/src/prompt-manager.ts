@@ -67,7 +67,14 @@ export class PromptManager {
     return vars;
   }
 
-  /** 渲染模板 */
+  /**
+   * Render a template by substituting all detected variables.
+   *
+   * @designNote All variables detected in the template (via `{{variable}}` syntax)
+   * are treated as required. If you need optional variables, use a conditional
+   * pattern in the template itself (e.g., `{{variable}}` with a default value
+   * baked into the template string).
+   */
   render(name: string, variables: Record<string, string>): string {
     const template = this.templates.get(name);
     if (!template) {
@@ -82,7 +89,8 @@ export class PromptManager {
 
     let result = template.template;
     for (const [key, value] of Object.entries(variables)) {
-      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g'), value);
     }
 
     return result;

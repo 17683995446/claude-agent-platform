@@ -361,12 +361,12 @@ describe('AuthManager', () => {
   });
 
   test('should register a strategy', () => {
-    authManager.registerStrategy(new TokenAuthStrategy());
+    authManager.registerStrategy(new TokenAuthStrategy('test-secret-key-for-unit-tests'));
     expect(authManager.getStrategies()).toContain('token');
   });
 
   test('should authenticate with token strategy', async () => {
-    const strategy = new TokenAuthStrategy();
+    const strategy = new TokenAuthStrategy('test-secret-key-for-unit-tests');
     authManager.registerStrategy(strategy);
     const token = strategy.generateToken('user1', ['admin'], ['files:read']);
     const result = await authManager.authenticate({ token });
@@ -375,7 +375,7 @@ describe('AuthManager', () => {
   });
 
   test('should fail authentication with invalid token', async () => {
-    authManager.registerStrategy(new TokenAuthStrategy());
+    authManager.registerStrategy(new TokenAuthStrategy('test-secret-key-for-unit-tests'));
     const result = await authManager.authenticate({ token: 'invalid' });
     expect(result.success).toBe(false);
   });
@@ -484,7 +484,7 @@ describe('AuthManager', () => {
   });
 
   test('should generate and validate tokens', () => {
-    authManager.registerStrategy(new TokenAuthStrategy());
+    authManager.registerStrategy(new TokenAuthStrategy('test-secret-key-for-unit-tests'));
     authManager.registerUser({ id: 'u1', username: 'test', roles: ['admin'], permissions: ['files:read'] });
     const token = authManager.generateToken('u1');
     expect(token).toBeTruthy();
@@ -494,7 +494,7 @@ describe('AuthManager', () => {
   });
 
   test('should revoke tokens', () => {
-    const strategy = new TokenAuthStrategy();
+    const strategy = new TokenAuthStrategy('test-secret-key-for-unit-tests');
     authManager.registerStrategy(strategy);
     authManager.registerUser({ id: 'u1', username: 'test', roles: [], permissions: [] });
     const token = authManager.generateToken('u1');
@@ -503,7 +503,7 @@ describe('AuthManager', () => {
   });
 
   test('should generate refresh tokens', () => {
-    authManager.registerStrategy(new TokenAuthStrategy());
+    authManager.registerStrategy(new TokenAuthStrategy('test-secret-key-for-unit-tests'));
     authManager.registerUser({ id: 'u1', username: 'test', roles: [], permissions: [] });
     const refreshToken = authManager.generateRefreshToken('u1');
     expect(refreshToken).toBeTruthy();
@@ -511,7 +511,7 @@ describe('AuthManager', () => {
   });
 
   test('should record audit log entries', async () => {
-    authManager.registerStrategy(new TokenAuthStrategy());
+    authManager.registerStrategy(new TokenAuthStrategy('test-secret-key-for-unit-tests'));
     await authManager.authenticate({ token: 'invalid' });
     const log = authManager.getAuditLog();
     expect(log.size).toBe(1);
@@ -660,7 +660,7 @@ describe('SecretManager', () => {
   });
 
   test('FileSecretProvider should encrypt and decrypt', async () => {
-    const provider = new FileSecretProvider('my-key');
+    const provider = new FileSecretProvider('my-encryption-key-16');
     await provider.set('SECRET', 'my_secret_value');
     const value = await provider.get('SECRET');
     expect(value).toBe('my_secret_value');

@@ -108,12 +108,14 @@ export class ToolExecutor {
     const timeout = tool.timeout ?? this.defaultTimeout;
 
     try {
+      let timerId: ReturnType<typeof setTimeout>;
       const result = await Promise.race([
         tool.handler(params),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Tool execution timeout')), timeout),
-        ),
+        new Promise<never>((_, reject) => {
+          timerId = setTimeout(() => reject(new Error('Tool execution timeout')), timeout);
+        }),
       ]);
+      clearTimeout(timerId);
 
       return {
         toolCallId: toolCall.id,

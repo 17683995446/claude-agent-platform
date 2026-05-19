@@ -10,7 +10,7 @@ let recordCounter = 0;
 
 function generateRecordId(): string {
   recordCounter++;
-  return `exec-${Date.now().toString(36)}-${recordCounter.toString(36).padStart(4, '0')}`;
+  return `exec-${Date.now().toString(36)}-${recordCounter.toString(36)}`;
 }
 
 // ---- ExecutionHistory Class ----
@@ -116,7 +116,10 @@ export class ExecutionHistory {
       results = results.filter((r) => r.startTime <= filters.endDate!);
     }
     if (filters.limit) {
-      results = results.slice(-filters.limit).reverse();
+      results.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+      results = results.slice(0, filters.limit);
+    } else {
+      results.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
     }
 
     return results;
@@ -130,7 +133,7 @@ export class ExecutionHistory {
         totalExecutions: 0,
         successRate: 0,
         averageDuration: 0,
-        totalDuration: 0,
+        completedDuration: 0,
         intentBreakdown: {} as Record<TaskIntent, number>,
         dailyBreakdown: {},
         mostCommonTasks: [],
@@ -139,8 +142,8 @@ export class ExecutionHistory {
 
     const successes = this.records.filter((r) => r.status === 'success').length;
     const completedRecords = this.records.filter((r) => r.duration !== undefined);
-    const totalDuration = completedRecords.reduce((sum, r) => sum + (r.duration ?? 0), 0);
-    const averageDuration = completedRecords.length > 0 ? totalDuration / completedRecords.length : 0;
+    const completedDuration = completedRecords.reduce((sum, r) => sum + (r.duration ?? 0), 0);
+    const averageDuration = completedRecords.length > 0 ? completedDuration / completedRecords.length : 0;
 
     // Intent breakdown
     const intentBreakdown = {} as Record<TaskIntent, number>;
@@ -169,7 +172,7 @@ export class ExecutionHistory {
       totalExecutions: total,
       successRate: successes / total,
       averageDuration,
-      totalDuration,
+      completedDuration,
       intentBreakdown,
       dailyBreakdown,
       mostCommonTasks,

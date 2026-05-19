@@ -57,7 +57,7 @@ export class FeedbackLoop {
       score,
       message,
       shouldRetry: !success && history.length < this.retryConfig.maxRetries,
-      retryCount: history.length,
+      retryCount: history.length + 1,
       maxRetries: this.retryConfig.maxRetries,
       nextRetryDelay: success ? 0 : this.calculateRetryDelay(history.length),
     };
@@ -112,7 +112,7 @@ export class FeedbackLoop {
     );
 
     if (this.retryConfig.jitter) {
-      const jitter = delay * 0.1 * Math.random();
+      const jitter = delay * 0.2 * (Math.random() - 0.5);
       return Math.floor(delay + jitter);
     }
 

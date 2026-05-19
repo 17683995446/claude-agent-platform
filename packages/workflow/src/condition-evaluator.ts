@@ -60,8 +60,8 @@ export class ConditionEvaluator {
         continue;
       }
 
-      // Numbers
-      if (/\d/.test(expr[i]) || (expr[i] === '-' && i + 1 < expr.length && /\d/.test(expr[i + 1]))) {
+      // Numbers - only treat '-' as negative if at start of expression or after operator/opening paren
+      if (/\d/.test(expr[i]) || (expr[i] === '-' && i + 1 < expr.length && /\d/.test(expr[i + 1]) && (i === 0 || /[\s(]/.test(expr[i - 1])))) {
         let j = i;
         if (expr[j] === '-') j++;
         while (j < expr.length && /[\d.]/.test(expr[j])) j++;

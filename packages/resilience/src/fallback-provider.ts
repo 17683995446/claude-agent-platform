@@ -24,6 +24,7 @@ export interface FallbackMetrics {
 export class FallbackProvider<T> {
   private fallbacks: Fallback<T>[] = [];
   private cachedValue: T | undefined;
+  private hasCachedValue = false;
   private metrics: FallbackMetrics = {
     primarySuccessCount: 0,
     primaryFailureCount: 0,
@@ -41,6 +42,7 @@ export class FallbackProvider<T> {
       const result = await fn();
       this.metrics.primarySuccessCount++;
       this.cachedValue = result;
+      this.hasCachedValue = true;
       return result;
     } catch (error) {
       this.metrics.primaryFailureCount++;
@@ -94,6 +96,7 @@ export class FallbackProvider<T> {
 
   setCachedValue(value: T): void {
     this.cachedValue = value;
+    this.hasCachedValue = true;
   }
 
   getCachedValue(): T | undefined {
@@ -101,22 +104,31 @@ export class FallbackProvider<T> {
   }
 
   private matchesFallback(error: Error, fallback: Fallback<T>): boolean {
-    if (fallback.errorType && error.constructor.name !== fallback.errorType) {
-      return false;
+    // OR logic: if any of the configured matchers match, the fallback applies.
+    // If no matchers are configured, the fallback applies to all errors.
+    const hasTypeMatch = fallback.errorType
+      ? error.constructor.name === fallback.errorType
+      : false;
+
+    const hasPatternMatch = fallback.errorPattern
+      ? fallback.errorPattern.test(error.message)
+      : false;
+
+    // If no matchers configured, fallback applies to everything
+    if (!fallback.errorType && !fallback.errorPattern) {
+      return true;
     }
-    if (fallback.errorPattern && !fallback.errorPattern.test(error.message)) {
-      return false;
-    }
-    return true;
+
+    return hasTypeMatch || hasPatternMatch;
   }
 
   private async executeFallback(fallback: Fallback<T>): Promise<T> {
     switch (fallback.strategy) {
       case 'cached_value':
-        if (this.cachedValue === undefined) {
+        if (!this.hasCachedValue) {
           throw new Error('No cached value available');
         }
-        return this.cachedValue;
+        return this.cachedValue!;
       case 'default_value':
         if (fallback.value === undefined) {
           throw new Error('No default value configured');

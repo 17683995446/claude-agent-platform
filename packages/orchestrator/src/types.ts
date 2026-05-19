@@ -226,7 +226,7 @@ export interface ExecutionStats {
   totalExecutions: number;
   successRate: number;
   averageDuration: number;
-  totalDuration: number;
+  completedDuration: number;
   intentBreakdown: Record<TaskIntent, number>;
   dailyBreakdown: Record<string, number>;
   mostCommonTasks: { description: string; count: number }[];

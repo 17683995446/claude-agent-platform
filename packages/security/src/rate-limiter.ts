@@ -13,6 +13,8 @@ export interface RateLimitOptions {
   burst?: number;
   /** Key prefix for storage */
   keyPrefix?: string;
+  /** Maximum number of unique rate limit buckets to track (default: 100000) */
+  maxBuckets?: number;
 }
 
 export interface RateLimitResult {
@@ -47,6 +49,11 @@ class InMemoryStorage implements RateLimitStorage {
   }
 
   async increment(key: string): Promise<{ count: number; lastUpdate: number }> {
+    // NOTE: This implementation is safe in Node.js's single-threaded event loop
+    // because there are no await points between the read and write, so no
+    // interleaving can occur. However, if this code were ported to a
+    // multi-threaded environment or if await points were introduced between
+    // the get and set operations, a race condition could occur.
     const existing = this.data.get(key);
     const now = Date.now();
     if (existing) {
@@ -204,6 +211,7 @@ export class AdvancedRateLimiter {
       algorithm: options.algorithm ?? 'token-bucket',
       burst: options.burst ?? 0,
       keyPrefix: options.keyPrefix ?? 'rl',
+      maxBuckets: options.maxBuckets ?? 100000,
     };
     this.storage = storage || new InMemoryStorage();
   }
@@ -262,14 +270,33 @@ export class AdvancedRateLimiter {
 
   /**
    * Get rate limit headers for HTTP responses
+   * Note: This checks the current rate limit status WITHOUT consuming a token.
+   * Use check() if you want to consume a token.
    */
   async getRateLimitHeaders(key: string): Promise<Record<string, string>> {
-    const result = await this.check(key);
+    const fullKey = `${this.options.keyPrefix}:${key}`;
+    const bucket = this.getOrCreateBucket(fullKey);
+
+    const backoffMultiplier = this.backoffMultipliers.get(fullKey) || 1;
+    const effectiveLimit = Math.floor(this.options.limit / backoffMultiplier);
+
+    let remaining: number;
+    if (bucket instanceof TokenBucket || bucket instanceof LeakyBucket || bucket instanceof SlidingWindowLog || bucket instanceof FixedWindowCounter) {
+      // Peek at current state without consuming
+      const snapshot = bucket.consume(0);
+      remaining = Math.min(snapshot.remaining, effectiveLimit);
+    } else {
+      remaining = effectiveLimit;
+    }
+
+    const resetTime = bucket instanceof FixedWindowCounter
+      ? bucket.getResetTime()
+      : Date.now() + this.options.windowMs;
+
     return {
-      'X-RateLimit-Limit': String(result.limit),
-      'X-RateLimit-Remaining': String(result.remaining),
-      'X-RateLimit-Reset': String(Math.ceil(result.resetTime / 1000)),
-      ...(result.retryAfter > 0 ? { 'Retry-After': String(Math.ceil(result.retryAfter / 1000)) } : {}),
+      'X-RateLimit-Limit': String(effectiveLimit),
+      'X-RateLimit-Remaining': String(remaining),
+      'X-RateLimit-Reset': String(Math.ceil(resetTime / 1000)),
     };
   }
 
@@ -307,6 +334,16 @@ export class AdvancedRateLimiter {
   private getOrCreateBucket(key: string): TokenBucket | LeakyBucket | SlidingWindowLog | FixedWindowCounter {
     let bucket = this.buckets.get(key);
     if (!bucket) {
+      // Enforce max bucket count to prevent unbounded memory growth
+      if (this.buckets.size >= this.options.maxBuckets) {
+        // Evict the oldest bucket (first entry in the Map)
+        const firstKey = this.buckets.keys().next().value;
+        if (firstKey !== undefined) {
+          this.buckets.delete(firstKey);
+          this.violationCounts.delete(firstKey);
+          this.backoffMultipliers.delete(firstKey);
+        }
+      }
       switch (this.options.algorithm) {
         case 'token-bucket':
           bucket = new TokenBucket(this.options.limit, this.options.windowMs, this.options.burst);

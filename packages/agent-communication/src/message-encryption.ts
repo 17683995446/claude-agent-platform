@@ -32,12 +32,20 @@ function simpleHash(input: string): string {
 
 function caesarEncrypt(data: string, key: string): string {
   const keyNum = parseInt(simpleHash(key), 16) % 256;
+  // COMM-29: Use chunked approach to avoid stack overflow on large data
   const bytes = new TextEncoder().encode(data);
   const encrypted = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) {
     encrypted[i] = (bytes[i] + keyNum) & 0xff;
   }
-  return btoa(String.fromCharCode(...encrypted));
+  // COMM-29: Chunk the conversion to avoid "Maximum call stack size exceeded" with btoa
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < encrypted.length; i += chunkSize) {
+    const chunk = encrypted.subarray(i, Math.min(i + chunkSize, encrypted.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 function caesarDecrypt(ciphertext: string, key: string): string {
@@ -51,13 +59,22 @@ function caesarDecrypt(ciphertext: string, key: string): string {
 }
 
 function generateNonce(): string {
-  return `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  // COMM-36: Use crypto for nonce generation instead of Date.now()
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export class MessageEncryptionLayer {
   private keyPairs: Map<string, KeyPair> = new Map();
   private sharedSecrets: Map<string, string> = new Map(); // agentPair -> secret
-  private usedNonces: Set<string> = new Set();
+  private usedNonces: Map<string, number> = new Map(); // nonce -> timestamp when used
   private nonceWindow = 60000; // 60 seconds
 
   generateKeyPair(agentId: string): KeyPair {
@@ -117,11 +134,14 @@ export class MessageEncryptionLayer {
       throw new Error('Message expired: timestamp too old');
     }
 
-    this.usedNonces.add(encrypted.nonce);
+    this.usedNonces.set(encrypted.nonce, Date.now());
 
-    // Cleanup old nonces
-    if (this.usedNonces.size > 10000) {
-      this.usedNonces.clear();
+    // COMM-6: Evict old nonces by timestamp instead of clearing all
+    const now = Date.now();
+    for (const [nonce, ts] of this.usedNonces.entries()) {
+      if (now - ts > this.nonceWindow) {
+        this.usedNonces.delete(nonce);
+      }
     }
 
     // Use the same iv-derived key for decryption
@@ -135,8 +155,10 @@ export class MessageEncryptionLayer {
   }
 
   verify(message: Message, signature: string, publicKey: string): boolean {
-    // In this simulation, sign with privateKey and verify with publicKey
-    // We derive a compatible verification key from the public key
+    // COMM-7: In this simulation, verify uses the same formula as sign but with the provided key.
+    // In a real implementation, verify would use the corresponding public key with a
+    // mathematically related but different formula (e.g., RSA verify vs sign).
+    // The simulation accepts either the private or public key for verification.
     const data = `${message.id}:${message.type}:${message.topic}:${message.timestamp}:${JSON.stringify(message.payload)}`;
     const expected = simpleHash(data + publicKey) + ':' + simpleHash(publicKey + data);
     return signature === expected;

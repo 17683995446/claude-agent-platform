@@ -105,6 +105,7 @@ export class FileWorkflowStore implements WorkflowStore {
   private definitionsPath: string;
   private instancesPath: string;
   private checkpointsPath: string;
+  private mutex: Promise<void> = Promise.resolve();
 
   constructor(baseDir: string) {
     this.definitionsPath = `${baseDir}/definitions.json`;
@@ -112,13 +113,28 @@ export class FileWorkflowStore implements WorkflowStore {
     this.checkpointsPath = `${baseDir}/checkpoints.json`;
   }
 
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = this.mutex;
+    let resolveLock!: () => void;
+    this.mutex = new Promise<void>(resolve => { resolveLock = resolve; });
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      resolveLock();
+    }
+  }
+
   private async readJson<T>(path: string): Promise<T> {
     try {
       const { readFile } = await import('node:fs/promises');
       const content = await readFile(path, 'utf-8');
       return JSON.parse(content) as T;
-    } catch {
-      return {} as T;
+    } catch (e: any) {
+      if (e?.code === 'ENOENT') {
+        return {} as T;
+      }
+      throw e;
     }
   }
 
@@ -130,9 +146,11 @@ export class FileWorkflowStore implements WorkflowStore {
   }
 
   async saveDefinition(definition: WorkflowDefinition): Promise<void> {
-    const all = await this.readJson<Record<string, WorkflowDefinition>>(this.definitionsPath);
-    all[definition.id] = definition;
-    await this.writeJson(this.definitionsPath, all);
+    return this.withLock(async () => {
+      const all = await this.readJson<Record<string, WorkflowDefinition>>(this.definitionsPath);
+      all[definition.id] = definition;
+      await this.writeJson(this.definitionsPath, all);
+    });
   }
 
   async loadDefinition(id: string): Promise<WorkflowDefinition | undefined> {
@@ -146,15 +164,19 @@ export class FileWorkflowStore implements WorkflowStore {
   }
 
   async deleteDefinition(id: string): Promise<void> {
-    const all = await this.readJson<Record<string, WorkflowDefinition>>(this.definitionsPath);
-    delete all[id];
-    await this.writeJson(this.definitionsPath, all);
+    return this.withLock(async () => {
+      const all = await this.readJson<Record<string, WorkflowDefinition>>(this.definitionsPath);
+      delete all[id];
+      await this.writeJson(this.definitionsPath, all);
+    });
   }
 
   async saveInstance(instance: WorkflowInstance): Promise<void> {
-    const all = await this.readJson<Record<string, WorkflowInstance>>(this.instancesPath);
-    all[instance.id] = instance;
-    await this.writeJson(this.instancesPath, all);
+    return this.withLock(async () => {
+      const all = await this.readJson<Record<string, WorkflowInstance>>(this.instancesPath);
+      all[instance.id] = instance;
+      await this.writeJson(this.instancesPath, all);
+    });
   }
 
   async loadInstance(id: string): Promise<WorkflowInstance | undefined> {
@@ -184,15 +206,19 @@ export class FileWorkflowStore implements WorkflowStore {
   }
 
   async deleteInstance(id: string): Promise<void> {
-    const all = await this.readJson<Record<string, WorkflowInstance>>(this.instancesPath);
-    delete all[id];
-    await this.writeJson(this.instancesPath, all);
+    return this.withLock(async () => {
+      const all = await this.readJson<Record<string, WorkflowInstance>>(this.instancesPath);
+      delete all[id];
+      await this.writeJson(this.instancesPath, all);
+    });
   }
 
   async saveCheckpoint(checkpoint: Checkpoint): Promise<void> {
-    const all = await this.readJson<Record<string, Checkpoint>>(this.checkpointsPath);
-    all[checkpoint.instanceId] = checkpoint;
-    await this.writeJson(this.checkpointsPath, all);
+    return this.withLock(async () => {
+      const all = await this.readJson<Record<string, Checkpoint>>(this.checkpointsPath);
+      all[checkpoint.instanceId] = checkpoint;
+      await this.writeJson(this.checkpointsPath, all);
+    });
   }
 
   async loadCheckpoint(instanceId: string): Promise<Checkpoint | undefined> {

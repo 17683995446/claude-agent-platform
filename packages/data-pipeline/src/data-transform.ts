@@ -19,7 +19,7 @@ export class DataTransformEngine {
     this.transforms.set('identity', (d: unknown) => d);
     this.transforms.set('constant', (d: unknown) => {
       const val = (d as any)?.value ?? d;
-      return () => val;
+      return val;
     });
     this.transforms.set('default', (d: unknown) => {
       const { value, fallback } = d as any;

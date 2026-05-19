@@ -101,13 +101,15 @@ export class ParallelExecutor {
         try {
           const taskStart = Date.now();
           const taskPromise = task.execute();
+          let taskTimerId: ReturnType<typeof setTimeout>;
 
           result = await Promise.race([
             taskPromise,
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Task "${task.id}" timed out`)), opts.taskTimeout)
-            ),
+            new Promise<never>((_, reject) => {
+              taskTimerId = setTimeout(() => reject(new Error(`Task "${task.id}" timed out`)), opts.taskTimeout);
+            }),
           ]);
+          clearTimeout(taskTimerId);
 
           success = true;
           lastError = undefined;

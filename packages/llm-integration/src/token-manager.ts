@@ -42,6 +42,7 @@ export class TokenManager {
   private modelLimits = new Map<string, ModelTokenLimits>();
   private alerts: string[] = [];
   private alertThreshold = 0.8; // 80% 使用时发出警告
+  private reservedTokens = new Map<string, number>(); // model -> reserved token count
 
   constructor() {
     // 设置默认模型限制
@@ -98,7 +99,8 @@ export class TokenManager {
     if (!budget) return Infinity;
 
     const used = this.getUsedTokens(model);
-    return Math.max(0, budget.total - used);
+    const reserved = this.reservedTokens.get(model) ?? 0;
+    return Math.max(0, budget.total - used - reserved);
   }
 
   /** 分配 Token */
@@ -108,12 +110,19 @@ export class TokenManager {
       this.addAlert(`Token allocation failed for ${model}: requested ${tokens}, remaining ${remaining}`);
       return false;
     }
+    this.reservedTokens.set(model, (this.reservedTokens.get(model) ?? 0) + tokens);
     return true;
   }
 
   /** 记录 Token 使用 */
   recordUsage(usage: TokenUsageRecord): void {
     this.usage.push(usage);
+
+    // Deduct from reserved tokens
+    const reserved = this.reservedTokens.get(usage.model) ?? 0;
+    if (reserved > 0) {
+      this.reservedTokens.set(usage.model, Math.max(0, reserved - usage.totalTokens));
+    }
 
     // 检查预算警告
     const budget = this.budgets.get(usage.model);

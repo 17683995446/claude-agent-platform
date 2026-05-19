@@ -67,34 +67,40 @@ const PRIORITY_KEYWORDS = {
   low: { zh: ['不急', '有空', '闲时', '低优先'], en: ['low priority', 'low', 'when possible', 'no rush'] },
 };
 
-// ---- File path patterns ----
+// ---- File path patterns (factories to avoid shared state) ----
 
-const FILE_PATH_PATTERNS = [
-  /(?:^|\s)([~./][\w./\-]+)/g,
-  /(?:^|\s)([\w./\-]+\.\w{1,5})(?:\s|$)/g,
-  /(?:路径|path|文件|file|目录|dir)[:\s]+([~./][\w./\-]+)/gi,
-];
+function createFilePathPatterns(): RegExp[] {
+  return [
+    /(?:^|\s)([~./][\w./\-]+)/g,
+    /(?:^|\s)([\w./\-]+\.\w{1,5})(?:\s|$)/g,
+    /(?:路径|path|文件|file|目录|dir)[:\s]+([~./][\w./\-]+)/gi,
+  ];
+}
 
-// ---- Module name patterns ----
+// ---- Module name patterns (factory) ----
 
-const MODULE_PATTERNS = [
-  /(?:模块|module|包|package)[:\s]+([\w@./\-]+)/gi,
-  /@[\w.-]+\/[\w.-]+/g,
-];
+function createModulePatterns(): RegExp[] {
+  return [
+    /(?:模块|module|包|package)[:\s]+([\w@./\-]+)/gi,
+    /@[\w.-]+\/[\w.-]+/g,
+  ];
+}
 
-// ---- Parameter patterns ----
+// ---- Parameter patterns (factory) ----
 
-const PARAMETER_PATTERNS = [
-  /--([\w-]+)(?:=|\s+)([^\s]+)/g,
-  /(?:参数|param|配置|config|选项|option)[:\s]+([\w-]+)(?:[:\s]+([^\s]+))?/gi,
-];
+function createParameterPatterns(): RegExp[] {
+  return [
+    /--([\w-]+)(?:=|\s+)([^\s]+)/g,
+    /(?:参数|param|配置|config|选项|option)[:\s]+([\w-]+)(?:[:\s]+([^\s]+))?/gi,
+  ];
+}
 
 // ---- Language detection ----
 
 function detectLanguage(text: string): 'zh' | 'en' | 'mixed' {
   const zhChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  const enWords = (text.match(/[a-zA-Z]+/g) || []).length;
-  const total = zhChars + enWords;
+  const enChars = (text.match(/[a-zA-Z]/g) || []).length;
+  const total = zhChars + enChars;
 
   if (total === 0) return 'en';
   const zhRatio = zhChars / total;
@@ -117,7 +123,7 @@ function recognizeIntent(text: string): { intent: TaskIntent; confidence: number
 
     for (const keyword of allKeywords) {
       if (lower.includes(keyword.toLowerCase())) {
-        score += keyword.length / text.length;
+        score += 1;
       }
     }
 
@@ -140,7 +146,7 @@ function extractEntities(text: string): ExtractedEntity[] {
   let entityId = 0;
 
   // Extract file paths
-  for (const regex of FILE_PATH_PATTERNS) {
+  for (const regex of createFilePathPatterns()) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
@@ -157,7 +163,7 @@ function extractEntities(text: string): ExtractedEntity[] {
   }
 
   // Extract module names
-  for (const regex of MODULE_PATTERNS) {
+  for (const regex of createModulePatterns()) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
@@ -174,7 +180,7 @@ function extractEntities(text: string): ExtractedEntity[] {
   }
 
   // Extract parameters
-  for (const regex of PARAMETER_PATTERNS) {
+  for (const regex of createParameterPatterns()) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
@@ -203,21 +209,24 @@ function detectPriority(text: string): 'low' | 'medium' | 'high' | 'critical' {
     if (lower.includes(keyword)) return 'critical';
   }
   for (const keyword of PRIORITY_KEYWORDS.critical.en) {
-    if (lower.includes(keyword)) return 'critical';
+    const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(lower)) return 'critical';
   }
 
   for (const keyword of PRIORITY_KEYWORDS.high.zh) {
     if (lower.includes(keyword)) return 'high';
   }
   for (const keyword of PRIORITY_KEYWORDS.high.en) {
-    if (lower.includes(keyword)) return 'high';
+    const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(lower)) return 'high';
   }
 
   for (const keyword of PRIORITY_KEYWORDS.low.zh) {
     if (lower.includes(keyword)) return 'low';
   }
   for (const keyword of PRIORITY_KEYWORDS.low.en) {
-    if (lower.includes(keyword)) return 'low';
+    const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(lower)) return 'low';
   }
 
   return 'medium';
@@ -332,7 +341,7 @@ export class NLTaskParser {
 
       for (const keyword of allKeywords) {
         if (lower.includes(keyword.toLowerCase())) {
-          score += keyword.length / text.length;
+          score += 1;
         }
       }
 
@@ -349,7 +358,7 @@ export class NLTaskParser {
 
       for (const keyword of allKeywords) {
         if (lower.includes(keyword.toLowerCase())) {
-          score += keyword.length / text.length;
+          score += 1;
         }
       }
 

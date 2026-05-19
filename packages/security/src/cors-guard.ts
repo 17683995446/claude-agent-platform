@@ -179,8 +179,10 @@ export class CORSGuard {
   /**
    * Remove an allowed origin
    */
-  removeOrigin(origin: string): boolean {
-    const index = this.config.origins.indexOf(origin);
+  removeOrigin(origin: string | RegExp): boolean {
+    const index = this.config.origins.findIndex(
+      (o) => o === origin || (o instanceof RegExp && origin instanceof RegExp && o.source === origin.source && o.flags === origin.flags)
+    );
     if (index >= 0) {
       this.config.origins.splice(index, 1);
       return true;
@@ -203,10 +205,12 @@ export class CORSGuard {
 
   /**
    * Create a permissive configuration (allow all)
+   * Note: credentials cannot be true when origin is '*', so this uses
+   * a permissive RegExp pattern instead.
    */
   static permissive(): CORSGuard {
     return new CORSGuard({
-      origins: ['*'],
+      origins: [/^https?:\/\/.+/],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       headers: ['*'],
       credentials: true,

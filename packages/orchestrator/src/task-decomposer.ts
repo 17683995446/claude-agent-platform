@@ -18,7 +18,7 @@ let subTaskCounter = 0;
 
 function generateSubTaskId(): string {
   subTaskCounter++;
-  return `sub-${Date.now().toString(36)}-${subTaskCounter.toString(36).padStart(4, '0')}`;
+  return `sub-${Date.now().toString(36)}-${subTaskCounter.toString(36)}`;
 }
 
 // ---- Intent decomposition rules ----
@@ -496,9 +496,10 @@ const DECOMPOSITION_RULES: Record<TaskIntent, (task: ParsedTask) => SubTask[]> =
   },
 
   unknown: (task) => {
+    const firstId = generateSubTaskId();
     return [
       {
-        id: generateSubTaskId(),
+        id: firstId,
         name: '理解任务',
         description: '分析用户意图',
         intent: 'analyze',
@@ -513,7 +514,7 @@ const DECOMPOSITION_RULES: Record<TaskIntent, (task: ParsedTask) => SubTask[]> =
         name: '执行任务',
         description: '执行用户请求的操作',
         intent: 'unknown',
-        dependencies: [generateSubTaskId()],
+        dependencies: [firstId],
         priority: 10,
         estimatedDuration: 5000,
         entities: task.entities,
@@ -555,10 +556,9 @@ function findParallelGroups(nodes: SubTask[]): string[][] {
     }
 
     if (ready.length === 0) {
-      // Break circular dependencies
+      // Break circular dependencies - push all remaining nodes
       for (const id of remaining) {
         ready.push(id);
-        break;
       }
     }
 
@@ -582,7 +582,7 @@ function findCriticalPath(nodes: SubTask[], edges: TaskEdge[]): string[] {
 
   for (const node of nodes) {
     inDegree.set(node.id, 0);
-    dist.set(node.id, node.estimatedDuration);
+    dist.set(node.id, 0);
     prev.set(node.id, null);
   }
 
@@ -624,6 +624,17 @@ function findCriticalPath(nodes: SubTask[], edges: TaskEdge[]): string[] {
     }
   }
 
+  // If no edges were traversed, pick the node with longest duration as the path
+  if (!endNode) {
+    let maxDur = 0;
+    for (const node of nodes) {
+      if (node.estimatedDuration > maxDur) {
+        maxDur = node.estimatedDuration;
+        endNode = node.id;
+      }
+    }
+  }
+
   const path: string[] = [];
   let current: string | null = endNode;
   while (current) {
@@ -657,11 +668,16 @@ export class TaskDecomposer {
     const edges = buildEdges(nodes);
     const parallelGroups = findParallelGroups(nodes);
     const criticalPath = findCriticalPath(nodes, edges);
-    const totalEstimatedDuration = nodes.reduce((sum, n) => sum + n.estimatedDuration, 0);
+    const criticalPathDuration = criticalPath.reduce((sum, id) => {
+      const node = nodes.find((n) => n.id === id);
+      return sum + (node?.estimatedDuration ?? 0);
+    }, 0);
+    const totalEstimatedDuration = criticalPathDuration;
 
     const strategy: 'sequential' | 'parallel' | 'mixed' =
       parallelGroups.length === 1 ? 'sequential' :
       parallelGroups.every((g) => g.length === 1) ? 'sequential' :
+      parallelGroups.every((g) => g.length > 1) ? 'parallel' :
       parallelGroups.some((g) => g.length > 1) ? 'mixed' : 'sequential';
 
     return {

@@ -87,7 +87,14 @@ export class Sandbox {
     }
 
     // Check for path traversal attempts
-    const normalized = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+    // Decode URL-encoded characters first to prevent bypass via %2e%2e%2f etc.
+    let decoded = path;
+    try {
+      decoded = decodeURIComponent(path);
+    } catch {
+      // If decoding fails, use the original path
+    }
+    const normalized = decoded.replace(/\\/g, '/').replace(/\/+/g, '/');
     if (normalized.includes('..')) {
       return { allowed: false, reason: 'Path traversal detected' };
     }
@@ -144,8 +151,9 @@ export class Sandbox {
     let result: T | undefined;
     let error: string | undefined;
 
-    // Simulate memory tracking
-    const estimatedMemory = code.length * 100 + 1024; // rough estimate
+    // Estimate memory usage based on code size and complexity
+    // Accounts for code string, AST overhead, runtime objects, and stack frames
+    const estimatedMemory = code.length * 2 + 4096 + (code.split(/\s+/).length * 64);
 
     if (estimatedMemory > mergedOptions.memoryLimit) {
       return {
@@ -161,8 +169,32 @@ export class Sandbox {
     }
 
     try {
-      // Create a sandboxed function using Function constructor
-      // In a real implementation, this would use a proper sandbox like vm2 or isolates
+      // SECURITY WARNING: new Function() does NOT provide true sandboxing.
+      // The executed code has access to the global scope (process, require, etc.)
+      // and can escape any restrictions imposed here. In production, use a proper
+      // sandboxing solution such as:
+      //   - Node.js vm module with context isolation
+      //   - isolates-vm or vm2 packages
+      //   - Web Workers
+      //   - Separate child processes
+      //   - Deno permissions
+      //
+      // Basic input sanitization: reject code containing dangerous patterns
+      const dangerousPatterns = [
+        /\bprocess\b/,
+        /\brequire\b/,
+        /\bimport\b/,
+        /\beval\b/,
+        /\bFunction\b/,
+        /\bglobalThis\b/,
+        /\bglobal\b/,
+      ];
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(code)) {
+          throw new Error(`Code contains prohibited pattern: ${pattern.source}`);
+        }
+      }
+
       const sandboxedFn = new Function(
         '__output',
         `
@@ -193,8 +225,9 @@ export class Sandbox {
       const output: Record<string, unknown> = {};
 
       // Execute with timeout
+      let timeoutId: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           timedOut = true;
           reject(new Error(`Execution timed out after ${mergedOptions.timeout}ms`));
         }, mergedOptions.timeout);
@@ -202,7 +235,14 @@ export class Sandbox {
 
       const executionPromise = Promise.resolve(sandboxedFn(output));
 
-      await Promise.race([executionPromise, timeoutPromise]);
+      try {
+        await Promise.race([executionPromise, timeoutPromise]);
+        // Clear the timeout on successful execution to prevent timer leak
+        clearTimeout(timeoutId);
+      } catch (raceError) {
+        clearTimeout(timeoutId);
+        throw raceError;
+      }
 
       stdout = (output.stdout as string) ?? '';
       stderr = (output.stderr as string) ?? '';

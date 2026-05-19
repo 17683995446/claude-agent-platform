@@ -72,6 +72,13 @@ export class RetryWithBackoff {
     this.retryCallbacks.push(callback);
   }
 
+  removeRetryCallback(callback: RetryCallback): void {
+    const index = this.retryCallbacks.indexOf(callback);
+    if (index !== -1) {
+      this.retryCallbacks.splice(index, 1);
+    }
+  }
+
   getHistory(): RetryEvent[] {
     return [...this.history];
   }
@@ -109,35 +116,61 @@ export class RetryWithBackoff {
   }
 
   private isRetryable(error: Error): boolean {
-    if (this.config.retryablePredicate && !this.config.retryablePredicate(error)) {
-      return false;
+    // If a custom predicate is provided, use it exclusively
+    if (this.config.retryablePredicate) {
+      return this.config.retryablePredicate(error);
     }
 
-    if (this.config.retryableErrorTypes?.length) {
-      if (!this.config.retryableErrorTypes.includes(error.constructor.name)) {
-        return false;
-      }
+    // OR logic: if any of the configured matchers match, the error is retryable.
+    // If no matchers are configured, all errors are considered retryable.
+    const hasTypeMatch = this.config.retryableErrorTypes?.length
+      ? this.config.retryableErrorTypes.includes(error.constructor.name)
+      : false;
+
+    const hasPatternMatch = this.config.retryablePatterns?.length
+      ? this.config.retryablePatterns.some(p => p.test(error.message))
+      : false;
+
+    // If no matchers are configured at all, default to retryable
+    if (!this.config.retryableErrorTypes?.length && !this.config.retryablePatterns?.length) {
+      return true;
     }
 
-    if (this.config.retryablePatterns?.length) {
-      if (!this.config.retryablePatterns.some(p => p.test(error.message))) {
-        return false;
-      }
-    }
-
-    return true;
+    return hasTypeMatch || hasPatternMatch;
   }
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, ms);
+      // Check synchronously before setting up the timer
+      if (this.config.signal?.aborted) {
+        reject(new DOMException('Operation aborted', 'AbortError'));
+        return;
+      }
+
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      }, ms);
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (this.config.signal) {
+          this.config.signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new DOMException('Operation aborted', 'AbortError'));
+      };
+
       if (this.config.signal) {
-        const onAbort = () => {
-          clearTimeout(timer);
-          reject(new DOMException('Operation aborted', 'AbortError'));
-        };
         this.config.signal.addEventListener('abort', onAbort, { once: true });
-        setTimeout(() => this.config.signal!.removeEventListener('abort', onAbort), ms + 100);
       }
     });
   }

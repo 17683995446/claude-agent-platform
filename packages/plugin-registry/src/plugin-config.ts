@@ -14,6 +14,8 @@ export interface ConfigSchemaProperty {
   min?: number;
   max?: number;
   pattern?: string;
+  properties?: Record<string, ConfigSchemaProperty>;
+  items?: ConfigSchemaType;
 }
 
 export interface ConfigSchema {
@@ -134,6 +136,33 @@ export class PluginConfigManager {
       if (actualType !== propDef.type) {
         errors.push(`Property "${key}" expected type "${propDef.type}" but got "${actualType}"`);
         continue;
+      }
+
+      // Deep validation for nested objects
+      if (propDef.type === 'object' && propDef.properties && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        for (const [subKey, subPropDef] of Object.entries(propDef.properties)) {
+          const subValue = (value as Record<string, unknown>)[subKey];
+          if (subPropDef.required && subValue === undefined) {
+            errors.push(`Required nested property "${key}.${subKey}" is missing`);
+            continue;
+          }
+          if (subValue !== undefined) {
+            const subType = Array.isArray(subValue) ? 'array' : typeof subValue;
+            if (subType !== subPropDef.type) {
+              errors.push(`Nested property "${key}.${subKey}" expected type "${subPropDef.type}" but got "${subType}"`);
+            }
+          }
+        }
+      }
+
+      // Deep validation for array items
+      if (propDef.type === 'array' && propDef.items && Array.isArray(value)) {
+        for (let i = 0; i < value.length; i++) {
+          const itemType = typeof value[i];
+          if (itemType !== propDef.items) {
+            errors.push(`Array "${key}" item at index ${i} expected type "${propDef.items}" but got "${itemType}"`);
+          }
+        }
       }
 
       // Enum check

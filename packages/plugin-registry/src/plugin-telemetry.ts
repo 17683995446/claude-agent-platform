@@ -63,6 +63,7 @@ export class PluginTelemetry {
   private startTimes = new Map<string, number>();
   private alerts: TelemetryAlert[] = [];
   private alertListeners: Array<(alert: TelemetryAlert) => void> = [];
+  private maxRecordsPerPlugin = 10000;
 
   // Thresholds
   private errorRateThreshold = 0.3;
@@ -107,6 +108,12 @@ export class PluginTelemetry {
     };
 
     this.executions.get(pluginName)!.push(record);
+
+    // Trim old records to prevent unbounded growth
+    const records = this.executions.get(pluginName)!;
+    if (records.length > this.maxRecordsPerPlugin) {
+      this.executions.set(pluginName, records.slice(-this.maxRecordsPerPlugin));
+    }
 
     // Check for slow execution
     if (duration > this.slowExecutionThresholdMs) {
@@ -162,8 +169,14 @@ export class PluginTelemetry {
     const failed = total - successful;
     const durations = records.map(r => r.duration);
     const avgTime = total > 0 ? durations.reduce((a, b) => a + b, 0) / total : 0;
-    const maxTime = total > 0 ? Math.max(...durations) : 0;
-    const minTime = total > 0 ? Math.min(...durations) : 0;
+    let maxTime = 0;
+    for (let i = 0; i < durations.length; i++) {
+      if (durations[i] > maxTime) maxTime = durations[i];
+    }
+    let minTime = 0;
+    for (let i = 0; i < durations.length; i++) {
+      if (i === 0 || durations[i] < minTime) minTime = durations[i];
+    }
     const errorRate = total > 0 ? failed / total : 0;
     const lastExec = total > 0 ? records[records.length - 1].timestamp : 0;
     const startTime = this.startTimes.get(pluginName) ?? lastExec;

@@ -273,7 +273,7 @@ describe('TaskDelegationManager', () => {
       payload: 'write tests',
       priority: 1,
       requiredCapabilities: ['code'],
-      timeout: 5000,
+      timeout: 200,
       createdAt: Date.now(),
     };
     const result = await manager.delegate(task);
@@ -287,7 +287,7 @@ describe('TaskDelegationManager', () => {
       payload: 'write code',
       priority: 1,
       requiredCapabilities: ['code'],
-      timeout: 1000,
+      timeout: 200,
       createdAt: Date.now(),
     };
     const result = await manager.delegate(task);
@@ -303,7 +303,7 @@ describe('TaskDelegationManager', () => {
       payload: null,
       priority: 1,
       requiredCapabilities: [],
-      timeout: 5000,
+      timeout: 200,
       createdAt: Date.now(),
     };
     await manager.delegate(task);
@@ -320,7 +320,7 @@ describe('TaskDelegationManager', () => {
       payload: null,
       priority: 1,
       requiredCapabilities: [],
-      timeout: 5000,
+      timeout: 200,
       createdAt: Date.now(),
     };
     // Delegate and immediately cancel (race condition possible but we try)

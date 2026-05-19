@@ -70,6 +70,7 @@ export class WorkflowEngine {
   private definitions = new Map<string, WorkflowDefinition>();
   private instances = new Map<string, WorkflowInstance>();
   private stepExecutors = new Map<StepType, (step: WorkflowStep, variables: Record<string, unknown>) => Promise<unknown>>();
+  private pauseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor() {
     // Register default step executors
@@ -173,8 +174,13 @@ export class WorkflowEngine {
           // Wait for resume
           await new Promise<void>((resolve) => {
             const check = () => {
-              if (instance.status !== 'paused') resolve();
-              else setTimeout(check, 50);
+              if (instance.status !== 'paused') {
+                this.pauseTimers.delete(instanceId);
+                resolve();
+              } else {
+                const timerId = setTimeout(check, 50);
+                this.pauseTimers.set(instanceId, timerId);
+              }
             };
             check();
           });
@@ -217,14 +223,10 @@ export class WorkflowEngine {
               step.next.map(async (nextStepId) => {
                 const nextStep = stepMap.get(nextStepId);
                 if (!nextStep) return;
-                const branchOutput = await this.executeStepWithRetry(nextStep, instance.variables);
-                instance.history.push({
-                  stepId: nextStepId,
-                  status: 'completed',
-                  timestamp: new Date(),
-                  output: branchOutput,
-                });
-                visited.add(nextStepId);
+                // Work on a snapshot of variables to avoid race conditions
+                const branchVars = { ...instance.variables };
+                const branchOutput = await this.executeStepWithRetry(nextStep, branchVars);
+                return { nextStepId, output: branchOutput };
               })
             );
             // Check if any branch failed
@@ -234,6 +236,20 @@ export class WorkflowEngine {
               instance.status = 'failed';
               instance.completedAt = new Date();
               return { success: false, instanceId, error: 'All branches failed', duration: Date.now() - startTime };
+            }
+            // Merge branch results into instance.variables after all branches complete
+            for (const result of branchResults) {
+              if (result.status === 'fulfilled' && result.value) {
+                const { nextStepId, output } = result.value;
+                instance.variables[`${nextStepId}_output`] = output;
+                instance.history.push({
+                  stepId: nextStepId,
+                  status: 'completed',
+                  timestamp: new Date(),
+                  output,
+                });
+                visited.add(nextStepId);
+              }
             }
             currentStepId = null; // Branching completes the current path
           }
@@ -278,10 +294,17 @@ export class WorkflowEngine {
     for (let attempt = 0; attempt <= retryPolicy.count; attempt++) {
       try {
         if (step.timeout) {
-          return await Promise.race([
-            executor(step, variables),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Step "${step.id}" timed out after ${step.timeout}ms`)), step.timeout)),
-          ]);
+          let timerId: ReturnType<typeof setTimeout>;
+          try {
+            return await Promise.race([
+              executor(step, variables),
+              new Promise<never>((_, reject) => {
+                timerId = setTimeout(() => reject(new Error(`Step "${step.id}" timed out after ${step.timeout}ms`)), step.timeout);
+              }),
+            ]);
+          } finally {
+            clearTimeout(timerId);
+          }
         }
         return await executor(step, variables);
       } catch (err) {
@@ -320,6 +343,11 @@ export class WorkflowEngine {
     const instance = this.instances.get(instanceId);
     if (instance && (instance.status === 'running' || instance.status === 'paused')) {
       instance.status = 'cancelled';
+      const timer = this.pauseTimers.get(instanceId);
+      if (timer) {
+        clearTimeout(timer);
+        this.pauseTimers.delete(instanceId);
+      }
     }
   }
 

@@ -215,7 +215,8 @@ export class AnthropicProvider implements LLMProvider {
         throw lastError;
       }
     }
-    throw lastError!;
+    // TypeScript needs this for exhaustiveness; the loop always throws or returns
+    throw lastError;
   }
 
   /** 发送消息请求 */
@@ -314,7 +315,8 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error(`Anthropic API error ${res.status}: ${errorText}`);
     }
 
-    const reader = res.body!.getReader();
+    if (!res.body) throw new Error('Response body is null');
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 

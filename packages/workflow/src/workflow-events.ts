@@ -131,7 +131,7 @@ export class WorkflowEventEmitter {
       let processedEvent: WorkflowEvent | null = { ...event };
       for (const middleware of this.middlewares) {
         processedEvent = middleware(processedEvent);
-        if (!processedEvent) return;
+        if (!processedEvent) continue;
       }
 
       const typeHandlers = this.handlers.get(processedEvent.type) ?? [];

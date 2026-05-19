@@ -154,13 +154,20 @@ export class PluginSandbox {
           throw new Error(`Plugin "${pluginName}" lacks required permissions for API "${apiName}"`);
         }
 
-        // Rate limiting
+        // Rate limiting - only count successful (allowed) requests
         if (apiDef.rateLimit) {
           const now = Date.now();
           const recentCalls = auditLog.filter(
-            e => e.pluginName === pluginName && e.apiName === apiName && now - e.timestamp < 60000,
+            e => e.pluginName === pluginName && e.apiName === apiName && e.result === 'allowed' && now - e.timestamp < 60000,
           );
           if (recentCalls.length >= apiDef.rateLimit) {
+            auditLog.push({
+              timestamp: startTime,
+              pluginName,
+              apiName,
+              args,
+              result: 'denied',
+            });
             throw new Error(`Rate limit exceeded for API "${apiName}"`);
           }
         }

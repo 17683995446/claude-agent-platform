@@ -68,6 +68,7 @@ export class WorkflowMonitor {
   private alertRules: AlertRule[] = [];
   private alerts: Alert[] = [];
   private maxRecords: number;
+  private firedAlerts = new Set<string>(); // Track fired alerts for deduplication
 
   constructor(maxRecords = 10000) {
     this.maxRecords = maxRecords;
@@ -258,14 +259,21 @@ export class WorkflowMonitor {
     for (const rule of this.alertRules) {
       if (!rule.enabled) continue;
       try {
+        const alertKey = `${workflowId}:${rule.name}`;
         if (rule.condition(stats)) {
-          this.alerts.push({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            message: rule.message,
-            timestamp: new Date(),
-            workflowId,
-          });
+          if (!this.firedAlerts.has(alertKey)) {
+            this.firedAlerts.add(alertKey);
+            this.alerts.push({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              message: rule.message,
+              timestamp: new Date(),
+              workflowId,
+            });
+          }
+        } else {
+          // Reset alert when condition no longer holds
+          this.firedAlerts.delete(alertKey);
         }
       } catch {
         // Alert evaluation errors should not break monitoring
