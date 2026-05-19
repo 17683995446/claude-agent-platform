@@ -59,6 +59,8 @@ export class TaskDelegationManager {
   private agents: Map<string, AgentWorkload> = new Map();
   private roundRobinIndex = 0;
   private escalationHandlers: Map<string, (task: AgentTask) => void> = new Map();
+  private taskTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private taskResolvers: Map<string, (result: TaskResult) => void> = new Map();
 
   registerAgent(agentId: string, capabilities: string[]): void {
     this.agents.set(agentId, {
@@ -134,7 +136,10 @@ export class TaskDelegationManager {
 
     // Simulate task execution with timeout
     return new Promise<TaskResult>((resolve) => {
+      this.taskResolvers.set(task.id, resolve);
       const timer = setTimeout(() => {
+        this.taskTimers.delete(task.id);
+        this.taskResolvers.delete(task.id);
         agent.activeTasks = Math.max(0, agent.activeTasks - 1);
         const result: TaskResult = {
           taskId: task.id,
@@ -148,6 +153,7 @@ export class TaskDelegationManager {
         this.tasks.set(task.id, status);
         resolve(result);
       }, Math.min(task.timeout, 100)); // Cap at 100ms for testing
+      this.taskTimers.set(task.id, timer);
     });
   }
 
@@ -161,6 +167,25 @@ export class TaskDelegationManager {
     if (status.state === 'completed' || status.state === 'cancelled') return false;
 
     status.state = 'cancelled';
+    // Clear the timeout so it doesn't override the cancelled status
+    const timer = this.taskTimers.get(taskId);
+    if (timer) {
+      clearTimeout(timer);
+      this.taskTimers.delete(taskId);
+    }
+    // Resolve the pending promise so awaiters don't hang
+    const resolver = this.taskResolvers.get(taskId);
+    if (resolver) {
+      this.taskResolvers.delete(taskId);
+      resolver({
+        taskId,
+        agentId: status.assignment?.agentId ?? 'none',
+        success: false,
+        result: null,
+        completedAt: Date.now(),
+        error: 'Task cancelled',
+      });
+    }
     if (status.assignment) {
       const agent = this.agents.get(status.assignment.agentId);
       if (agent) agent.activeTasks = Math.max(0, agent.activeTasks - 1);
@@ -216,6 +241,11 @@ export class TaskDelegationManager {
   }
 
   reset(): void {
+    // Clear all pending timers
+    for (const timer of this.taskTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.taskTimers.clear();
     this.tasks.clear();
     this.agents.clear();
     this.roundRobinIndex = 0;

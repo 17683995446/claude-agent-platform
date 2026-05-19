@@ -126,16 +126,17 @@ export function fuzzJSON(
   const rng = createRNG(Date.now());
 
   function generateJSON(currentDepth: number): unknown {
+    const type = Math.floor(rng() * 7);
+    if (type === 0) return Math.floor(rng() * 100);
+    if (type === 1) return rng() < 0.5;
+    if (type === 2) return 'str-' + Math.floor(rng() * 100);
+    if (type === 3) return null;
+
     if (currentDepth <= 0) {
-      const type = Math.floor(rng() * 4);
-      if (type === 0) return Math.floor(rng() * 100);
-      if (type === 1) return rng() < 0.5;
-      if (type === 2) return 'str-' + Math.floor(rng() * 100);
-      return null;
+      return Math.floor(rng() * 100);
     }
 
-    const type = Math.floor(rng() * 3);
-    if (type === 0) {
+    if (type === 4) {
       const arr: unknown[] = [];
       const len = Math.floor(rng() * 5);
       for (let i = 0; i < len; i++) {
@@ -143,7 +144,7 @@ export function fuzzJSON(
       }
       return arr;
     }
-    if (type === 1) {
+    if (type === 5) {
       const obj: Record<string, unknown> = {};
       const numKeys = Math.floor(rng() * 5);
       for (let i = 0; i < numKeys; i++) {

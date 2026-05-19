@@ -43,16 +43,33 @@ export class RateLimiter {
       this.waiters.push({ count, resolve });
       this.totalWaitTime += waitMs;
 
-      // Set a timeout to resolve waiters
-      setTimeout(() => {
-        this.refill();
-        this.processWaiters();
-      }, waitMs);
+      // Record the time of the acquire call for accurate refill calculation
+      const acquireTime = this.lastRefill;
+
+      const check = () => {
+        // Manually calculate tokens based on time since acquire
+        const now = Date.now();
+        const elapsed = (now - acquireTime) / 1000;
+        const currentTokens = Math.min(this.burst, (count - needed) + elapsed * this.rate);
+
+        if (currentTokens >= count - 1e-9) {
+          // Update internal state
+          this.lastRefill = now;
+          this.tokens = currentTokens;
+          this.processWaiters();
+        } else {
+          // Re-check after a short delay
+          setTimeout(check, 5);
+        }
+      };
+
+      // Initial check after calculated wait time
+      setTimeout(check, Math.max(1, waitMs));
     });
   }
 
   private processWaiters(): void {
-    while (this.waiters.length > 0 && this.tokens >= this.waiters[0]!.count) {
+    while (this.waiters.length > 0 && this.tokens >= this.waiters[0]!.count - 1e-9) {
       const waiter = this.waiters.shift()!;
       this.tokens -= waiter.count;
       this.totalAcquired += waiter.count;

@@ -214,6 +214,8 @@ export class SemanticMemory {
   }
 
   import(data: { concepts: Concept[]; relations: Relation[] }): void {
+    this.concepts.clear();
+    this.relations = [];
     for (const concept of data.concepts) {
       this.concepts.set(concept.name, {
         ...concept,
@@ -224,5 +226,10 @@ export class SemanticMemory {
     for (const relation of data.relations) {
       this.relations.push({ ...relation });
     }
+  }
+
+  clear(): void {
+    this.concepts.clear();
+    this.relations = [];
   }
 }

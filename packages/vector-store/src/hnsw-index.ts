@@ -178,9 +178,9 @@ export class HNSWIndex {
   }
 
   private randomLevel(): number {
-    const r = Math.random();
+    const r = Math.max(Math.random(), 1e-10);
     const level = Math.floor(-Math.log(r) * this.mL);
-    return level;
+    return Math.min(level, 32);
   }
 
   private similarity(a: number[], b: number[]): number {

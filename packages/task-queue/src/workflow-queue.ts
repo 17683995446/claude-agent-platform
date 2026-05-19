@@ -111,12 +111,17 @@ export class WorkflowQueue {
 
         const timeout = step.timeout;
         if (timeout && timeout > 0) {
-          result = await Promise.race([
-            step.handler(instance.data),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Step timed out after ${timeout}ms`)), timeout)
-            ),
-          ]);
+          let timer: ReturnType<typeof setTimeout>;
+          try {
+            result = await Promise.race([
+              step.handler(instance.data),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`Step timed out after ${timeout}ms`)), timeout);
+              }),
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
         } else {
           result = await step.handler(instance.data);
         }

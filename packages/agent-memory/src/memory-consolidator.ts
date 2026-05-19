@@ -125,12 +125,12 @@ export class MemoryConsolidator {
   mergeRelated(longTerm: LongTermMemory): number {
     const all = longTerm.export();
     let merged = 0;
-    const processed = new Set<string>();
+    const mergedAway = new Set<string>();
 
     for (let i = 0; i < all.length; i++) {
-      if (processed.has(all[i]!.key)) continue;
+      if (mergedAway.has(all[i]!.key)) continue;
       for (let j = i + 1; j < all.length; j++) {
-        if (processed.has(all[j]!.key)) continue;
+        if (mergedAway.has(all[j]!.key)) continue;
         // Check tag overlap
         const commonTags = all[i]!.tags.filter((t) => all[j]!.tags.includes(t));
         if (commonTags.length >= 2) {
@@ -139,12 +139,26 @@ export class MemoryConsolidator {
           all[i]!.importance = Math.max(all[i]!.importance, all[j]!.importance);
           all[i]!.accessCount += all[j]!.accessCount;
           longTerm.delete(all[j]!.key);
-          processed.add(all[j]!.key);
+          mergedAway.add(all[j]!.key);
           merged++;
         }
       }
-      processed.add(all[i]!.key);
     }
+
+    // Write merged entries back to long-term memory
+    const surviving: LongTermMemoryEntry[] = [];
+    for (const entry of all) {
+      if (mergedAway.has(entry.key)) {
+        // This entry was merged into another; skip
+        continue;
+      }
+      surviving.push(entry);
+    }
+    // Delete surviving entries first, then re-import with merged values
+    for (const entry of surviving) {
+      longTerm.delete(entry.key);
+    }
+    longTerm.import(surviving);
 
     this.stats.memoriesMerged += merged;
     return merged;

@@ -76,14 +76,40 @@ export class StreamProcessor<TIn, TOut> {
     const start = Date.now();
     try {
       let current: unknown = event;
-      for (const stage of this.stages) {
+      for (let stageIdx = 0; stageIdx < this.stages.length; stageIdx++) {
+        const stage = this.stages[stageIdx]!;
         const result = stage.transform(current);
         if (Array.isArray(result)) {
-          // For arrays, process the last element through remaining stages
-          // and publish all
+          // For arrays, publish each item through the output stream
           const items = result;
-          for (const item of items) {
-            current = item;
+          if (stageIdx === this.stages.length - 1) {
+            // Last stage: publish all items
+            for (const item of items) {
+              this.outputStream.publish(item as TOut);
+              this.processed++;
+            }
+            current = undefined;
+          } else {
+            // Not the last stage: process each item through remaining stages
+            const remainingStages = this.stages.slice(stageIdx + 1);
+            for (const item of items) {
+              let itemResult: unknown = item;
+              for (const remainingStage of remainingStages) {
+                const r = remainingStage.transform(itemResult);
+                if (Array.isArray(r)) {
+                  // Nested arrays not supported; take last element
+                  const arr = r as unknown[];
+                  itemResult = arr[arr.length - 1];
+                } else if (r instanceof Promise) {
+                  itemResult = await r;
+                } else {
+                  itemResult = r;
+                }
+              }
+              this.outputStream.publish(itemResult as TOut);
+              this.processed++;
+            }
+            current = undefined;
           }
         } else if (result instanceof Promise) {
           current = await result;
@@ -91,8 +117,11 @@ export class StreamProcessor<TIn, TOut> {
           current = result;
         }
       }
-      this.outputStream.publish(current as TOut);
-      this.processed++;
+      // If current was not set to undefined (no array expansion), publish it
+      if (current !== undefined) {
+        this.outputStream.publish(current as TOut);
+        this.processed++;
+      }
     } catch (err) {
       this.errors++;
       if (this.errorHandler) {

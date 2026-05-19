@@ -20,6 +20,7 @@ export class TextChunker {
 
     const chunks: string[] = [];
     let start = 0;
+    let lastStart = 0;
 
     while (start < text.length) {
       let end = Math.min(start + maxSize, text.length);
@@ -37,8 +38,10 @@ export class TextChunker {
 
       start = end - overlap;
       if (start < 0) start = 0;
-      // Avoid infinite loop
+      // Avoid infinite loop when overlap >= maxSize
+      if (start <= lastStart) start = lastStart + 1;
       if (start >= text.length) break;
+      lastStart = start;
     }
 
     return chunks.filter(c => c.length > 0);

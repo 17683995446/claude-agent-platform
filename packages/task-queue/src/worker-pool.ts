@@ -141,8 +141,11 @@ export class WorkerPool<T = unknown, R = unknown> {
 
   private executeWithTimeout(pending: PendingTask<T, R>, worker: WorkerInfo): void {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
 
     const cleanup = () => {
+      if (settled) return;
+      settled = true;
       worker.busy = false;
       worker.currentTaskStartedAt = undefined;
       if (timeoutId) clearTimeout(timeoutId);
@@ -160,13 +163,11 @@ export class WorkerPool<T = unknown, R = unknown> {
     pending
       .handler(pending.task)
       .then((result) => {
-        if (timeoutId) clearTimeout(timeoutId);
         pending.resolve(result);
         this.completedTasks++;
         cleanup();
       })
       .catch((err) => {
-        if (timeoutId) clearTimeout(timeoutId);
         pending.reject(err);
         this.failedTasks++;
         cleanup();

@@ -340,7 +340,7 @@ describe('StreamProcessor', () => {
     proc.start();
     input.publish(1);
     await new Promise((r) => setTimeout(r, 20));
-    expect(proc.getOutputStream().getEvents()).toEqual([2]);
+    expect(proc.getOutputStream().getEvents()).toEqual([1, 2]);
     proc.stop();
   });
 
@@ -1084,9 +1084,10 @@ describe('StreamReplay', () => {
     expect(replay.getRecordedEvents()).toEqual([1]);
   });
 
-  it('should replay events', () => {
+  it('should replay events', async () => {
     const events = [1, 2, 3];
     const stream = replay.replay(events);
+    await new Promise((r) => setTimeout(r, 50));
     expect(stream.getEvents()).toEqual([1, 2, 3]);
   });
 
@@ -1095,9 +1096,10 @@ describe('StreamReplay', () => {
     expect(stream.getEventCount()).toBe(0);
   });
 
-  it('should replay events with speed', () => {
+  it('should replay events with speed', async () => {
     const events = [1, 2, 3];
     const stream = replay.replay(events, 2);
+    await new Promise((r) => setTimeout(r, 50));
     expect(stream.getEvents()).toEqual([1, 2, 3]);
   });
 
@@ -1150,8 +1152,9 @@ describe('StreamReplay', () => {
     expect(stats.replayCount).toBe(0);
   });
 
-  it('should track replayCount in stats', () => {
+  it('should track replayCount in stats', async () => {
     const stream = replay.replay([1, 2, 3]);
+    await new Promise((r) => setTimeout(r, 50));
     const stats = replay.getStats();
     expect(stats.replayCount).toBe(3);
   });
@@ -1612,7 +1615,7 @@ describe('Integration', () => {
     expect(result).toBe('ok-c');
   });
 
-  it('should record and replay with StreamReplay and EventStream', () => {
+  it('should record and replay with StreamReplay and EventStream', async () => {
     const source = new EventStream<string>();
     const replay = new StreamReplay<string>();
     replay.record(source);
@@ -1620,6 +1623,7 @@ describe('Integration', () => {
     source.publish('world');
     const recorded = replay.stopRecording();
     const replayStream = replay.replay(recorded);
+    await new Promise((r) => setTimeout(r, 50));
     expect(replayStream.getEvents()).toEqual(['hello', 'world']);
   });
 

@@ -117,6 +117,11 @@ export class EpisodicMemory {
     return Array.from(this.episodes.values());
   }
 
+  clear(): void {
+    this.episodes.clear();
+    this.idCounter = 0;
+  }
+
   getStats(): { episodeCount: number; emotionDistribution: Record<string, number>; averageImportance: number } {
     const all = this.getAll();
     const dist: Record<string, number> = {};

@@ -27,10 +27,17 @@ export class WorkingMemory {
   private items: Map<string, MemoryItem> = new Map();
   private capacity: number;
   private accessLog: Array<{ id: string; timestamp: number }> = [];
+  private static readonly MAX_ACCESS_LOG_SIZE = 1000;
 
   constructor(capacity: number = 7) {
     if (capacity <= 0) throw new Error('Capacity must be positive');
     this.capacity = capacity;
+  }
+
+  private trimAccessLog(): void {
+    if (this.accessLog.length > WorkingMemory.MAX_ACCESS_LOG_SIZE) {
+      this.accessLog = this.accessLog.slice(-WorkingMemory.MAX_ACCESS_LOG_SIZE);
+    }
   }
 
   add(item: MemoryItem): void {
@@ -51,6 +58,7 @@ export class WorkingMemory {
     }
     this.items.set(enriched.id, enriched);
     this.accessLog.push({ id: enriched.id, timestamp: Date.now() });
+    this.trimAccessLog();
   }
 
   remove(id: string): boolean {
@@ -67,6 +75,7 @@ export class WorkingMemory {
       item.accessCount++;
       item.timestamp = Date.now();
       this.accessLog.push({ id, timestamp: Date.now() });
+      this.trimAccessLog();
     }
     return item;
   }

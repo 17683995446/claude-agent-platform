@@ -182,11 +182,14 @@ export class MemoryManager {
 
   reset(): void {
     this.workingMemory.clear();
+    this.shortTermMemory.clear();
     // Clear long-term entries
     const entries = this.longTermMemory.export();
     for (const entry of entries) {
       this.longTermMemory.delete(entry.key);
     }
+    this.episodicMemory.clear();
+    this.semanticMemory.clear();
     this.initialized = false;
   }
 

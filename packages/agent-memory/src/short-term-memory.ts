@@ -77,12 +77,17 @@ export class ShortTermMemory {
 
   trimToFit(): number {
     let trimmed = 0;
-    while (this.totalTokens > this.maxTokens && this.messages.length > 1) {
+    while (this.totalTokens > this.maxTokens && this.messages.length > 0) {
       const removed = this.messages.shift()!;
       this.totalTokens -= removed.tokens;
       trimmed++;
     }
     return trimmed;
+  }
+
+  clear(): void {
+    this.messages = [];
+    this.totalTokens = 0;
   }
 
   search(query: string): Message[] {

@@ -34,10 +34,25 @@ export class StreamReplay<T> {
 
     if (events.length === 0) return stream;
 
-    // Publish all events synchronously
-    for (const event of events) {
-      stream.publish(event);
-      this.replayCount++;
+    const replaySpeed = speed ?? 1;
+    const baseDelay = 10; // base delay in ms between events
+
+    if (replaySpeed <= 0) {
+      // Invalid speed, publish all synchronously
+      for (const event of events) {
+        stream.publish(event);
+        this.replayCount++;
+      }
+      return stream;
+    }
+
+    // Publish events with delay based on speed
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i]!;
+      setTimeout(() => {
+        stream.publish(event);
+        this.replayCount++;
+      }, i * (baseDelay / replaySpeed));
     }
 
     return stream;

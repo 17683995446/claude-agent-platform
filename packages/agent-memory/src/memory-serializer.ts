@@ -73,6 +73,12 @@ export class MemorySerializer {
       for (const item of data.workingMemory) {
         wm.add(item);
       }
+      // Restore short-term memory
+      const stm = manager.getShortTermMemory();
+      stm.clear();
+      for (const msg of data.shortTermMemory) {
+        stm.addMessage(msg.role, msg.content, msg.metadata);
+      }
       // Restore long-term memory
       const ltm = manager.getLongTermMemory();
       ltm.import(data.longTermMemory);

@@ -40,9 +40,13 @@ export class TaskMonitor {
   private events: MonitorEvent[] = [];
   private alertRules: Alert[] = [];
   private alerts: Alert[] = [];
+  private static readonly MAX_EVENTS = 10000;
 
   recordEvent(event: MonitorEvent): void {
     this.events.push(event);
+    if (this.events.length > TaskMonitor.MAX_EVENTS) {
+      this.events = this.events.slice(-TaskMonitor.MAX_EVENTS);
+    }
     this.checkAlertRules(event);
   }
 
