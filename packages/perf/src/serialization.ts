@@ -334,6 +334,10 @@ export interface StreamingSerializerOptions {
   pretty?: boolean;
   /** 是否包含类型信息 */
   includeTypeInfo?: boolean;
+  /** 是否启用压缩（仅对大型负载） */
+  compress?: boolean;
+  /** 启用压缩的最小负载大小（字节） */
+  compressThreshold?: number;
 }
 
 export class StreamingJSONSerializer {
@@ -343,17 +347,78 @@ export class StreamingJSONSerializer {
     this.options = {
       pretty: options?.pretty ?? false,
       includeTypeInfo: options?.includeTypeInfo ?? false,
+      compress: options?.compress ?? false,
+      compressThreshold: options?.compressThreshold ?? 1024,
     };
   }
 
   /** 流式序列化对象 */
   serialize(value: unknown): string {
-    return JSON.stringify(value, null, this.options.pretty ? 2 : undefined);
+    const seen = new WeakSet();
+    const json = JSON.stringify(value, (_key, val) => {
+      // Handle circular references
+      if (typeof val === 'object' && val !== null) {
+        if (seen.has(val)) {
+          return '[Circular]';
+        }
+        seen.add(val);
+      }
+      // Handle BigInt
+      if (typeof val === 'bigint') {
+        return { __type__: 'bigint', value: val.toString() };
+      }
+      // Handle Symbol
+      if (typeof val === 'symbol') {
+        return { __type__: 'symbol', value: val.description };
+      }
+      // Handle undefined
+      if (typeof val === 'undefined') {
+        return { __type__: 'undefined' };
+      }
+      // Handle Function
+      if (typeof val === 'function') {
+        return { __type__: 'function', name: val.name };
+      }
+      return val;
+    }, this.options.pretty ? 2 : undefined);
+
+    // Optional compression for large payloads
+    if (this.options.compress && json.length > this.options.compressThreshold) {
+      const compressed = CompressionHelper.compress(json);
+      // Return base64-encoded compressed data with a marker
+      return `__COMPRESSED__:${Buffer.from(compressed.data).toString('base64')}`;
+    }
+
+    return json;
   }
 
   /** 流式反序列化 */
   deserialize<T = unknown>(json: string): T {
-    return JSON.parse(json) as T;
+    // Handle compressed data
+    if (json.startsWith('__COMPRESSED__:')) {
+      const base64 = json.slice('__COMPRESSED__:'.length);
+      const compressed = Uint8Array.from(Buffer.from(base64, 'base64'));
+      const decompressed = CompressionHelper.decompress(compressed);
+      json = new TextDecoder().decode(decompressed);
+    }
+
+    return JSON.parse(json, (_key, val) => {
+      if (val && typeof val === 'object' && val.__type__) {
+        switch (val.__type__) {
+          case 'bigint':
+            return BigInt(val.value);
+          case 'symbol':
+            return Symbol(val.value);
+          case 'undefined':
+            return undefined;
+          case 'function':
+            return new Function(`return function ${val.name || 'anonymous'}() {}`)();
+          default:
+            return val;
+        }
+      }
+      return val;
+    }) as T;
   }
 
   /** 分块序列化（模拟流式处理） */

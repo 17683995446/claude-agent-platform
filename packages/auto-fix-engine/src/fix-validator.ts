@@ -4,7 +4,7 @@
  * Provides syntax, semantic, type, and test validation for fix results.
  */
 
-import type { FixResult } from './fix-strategy.js';
+import type { FixResult, Diagnostic } from './fix-strategy.js';
 
 /** Result of a validation check */
 export interface ValidationResult {
@@ -67,19 +67,34 @@ export class FixValidator {
     // Check balanced braces
     const braceCount = this.countBraces(code, '{', '}');
     if (braceCount.open !== braceCount.close) {
-      errors.push(`Unbalanced braces: ${braceCount.open} opening vs ${braceCount.close} closing`);
+      const diff = braceCount.open - braceCount.close;
+      if (diff > 0) {
+        errors.push(`Missing ${diff} closing brace(s) '}' - a block or object literal is not properly closed`);
+      } else {
+        errors.push(`Found ${Math.abs(diff)} extra closing brace(s) '}' without matching opening brace`);
+      }
     }
 
     // Check balanced parentheses
     const parenCount = this.countBraces(code, '(', ')');
     if (parenCount.open !== parenCount.close) {
-      errors.push(`Unbalanced parentheses: ${parenCount.open} opening vs ${parenCount.close} closing`);
+      const diff = parenCount.open - parenCount.close;
+      if (diff > 0) {
+        errors.push(`Missing ${diff} closing parenthesis/parentheses ')' - check for unclosed function calls or conditions`);
+      } else {
+        errors.push(`Found ${Math.abs(diff)} extra closing parenthesis/parentheses ')' without matching opening '('`);
+      }
     }
 
     // Check balanced brackets
     const bracketCount = this.countBraces(code, '[', ']');
     if (bracketCount.open !== bracketCount.close) {
-      errors.push(`Unbalanced brackets: ${bracketCount.open} opening vs ${bracketCount.close} closing`);
+      const diff = bracketCount.open - bracketCount.close;
+      if (diff > 0) {
+        errors.push(`Missing ${diff} closing bracket(s) ']' - an array or index access is not properly closed`);
+      } else {
+        errors.push(`Found ${Math.abs(diff)} extra closing bracket(s) ']' without matching opening '['`);
+      }
     }
 
     // Check for empty code
@@ -107,6 +122,28 @@ export class FixValidator {
         // This is a very rough heuristic, only flag as warning
         warnings.push(`Line ${i + 1}: Possible missing operator between expressions`);
       }
+    }
+
+    // Attempt to parse the code as JavaScript to catch syntax errors
+    try {
+      // Strip TypeScript-specific syntax for JS parsing
+      const jsCode = code
+        .replace(/:\s*(string|number|boolean|void|any|never|unknown|null|undefined|object)\b/g, '')
+        .replace(/<(?:\w+(?:\s+extends\s+\w+)?)>/g, '')
+        .replace(/as\s+\w+/g, '')
+        .replace(/interface\s+\w+\s*\{[^}]*\}/g, '')
+        .replace(/type\s+\w+\s*=\s*[^;]+;/g, '')
+        .replace(/export\s+(?:default\s+)?/g, '')
+        .replace(/import\s+.*?from\s+['"][^'"]+['"];?/g, '')
+        .replace(/@\w+/g, '');
+      // Only try to parse if there's actual code (not just type declarations)
+      const stripped = jsCode.trim();
+      if (stripped.length > 0 && /[a-zA-Z]/.test(stripped)) {
+        new Function(stripped);
+      }
+    } catch {
+      // If parsing fails, add a warning (not error since TS-specific syntax may cause false positives)
+      warnings.push('Generated code may contain syntax errors (basic parse check failed)');
     }
 
     const score = errors.length === 0 ? (warnings.length === 0 ? 1 : 0.9) : Math.max(0, 1 - errors.length * 0.2);
@@ -262,9 +299,10 @@ export class FixValidator {
    * Runs all applicable validations.
    * @param fixResult - The fix result to validate
    * @param originalCode - The original code before the fix
+   * @param originalDiagnostics - Optional original diagnostics to verify resolution
    * @returns ValidationResult combining all validation checks
    */
-  validateFix(fixResult: FixResult, originalCode: string): ValidationResult {
+  validateFix(fixResult: FixResult, originalCode: string, originalDiagnostics?: Diagnostic[]): ValidationResult {
     const allErrors: string[] = [];
     const allWarnings: string[] = [];
 
@@ -302,6 +340,21 @@ export class FixValidator {
     // Check that the fixed code is significantly different (if changes were reported)
     if (fixResult.changes.length > 0 && fixResult.code === originalCode) {
       allErrors.push('Fix reported changes but code is identical to original');
+    }
+
+    // Re-analyze: check if original diagnostics are still present in the fixed code
+    if (originalDiagnostics && originalDiagnostics.length > 0) {
+      for (const diag of originalDiagnostics) {
+        const diagLine = diag.line;
+        const fixedLines = fixResult.code.split('\n');
+        if (diagLine > 0 && diagLine <= fixedLines.length) {
+          const fixedLine = fixedLines[diagLine - 1];
+          // Simple heuristic: if the diagnostic message mentions a pattern, check if it's still present
+          if (diag.message.includes('missing semicolon') && !fixedLine.trim().endsWith(';') && fixedLine.trim() !== '' && !fixedLine.trim().startsWith('//')) {
+            allWarnings.push(`Original diagnostic may not be resolved: "${diag.message}" at line ${diag.line}`);
+          }
+        }
+      }
     }
 
     // Calculate overall score

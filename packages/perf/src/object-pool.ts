@@ -10,6 +10,8 @@ export interface ObjectPoolOptions<T> {
   reset: (obj: T) => void;
   /** 销毁函数，彻底释放对象资源 */
   destroy?: (obj: T) => void;
+  /** 验证函数，检查归还的对象是否有效 */
+  validate?: (obj: T) => boolean;
   /** 初始池大小 */
   initialSize?: number;
   /** 最小池大小（缩容下限） */
@@ -48,6 +50,10 @@ export interface ObjectPoolStats {
   totalCreated: number;
   /** 总销毁次数 */
   totalDestroyed: number;
+  /** 池利用率 (inUse / total) */
+  utilizationRate: number;
+  /** 池容量使用率 (total / maxSize) */
+  capacityRate: number;
 }
 
 export class ObjectPool<T> {
@@ -132,6 +138,18 @@ export class ObjectPool<T> {
       return;
     }
 
+    // Validate returned object if validator is provided
+    if (this.options.validate && !this.options.validate(pooled.value)) {
+      // Invalid object, destroy and remove from pool
+      this.options.destroy?.(pooled.value);
+      const index = this.pool.indexOf(pooled);
+      if (index !== -1) {
+        this.pool.splice(index, 1);
+        this.stats.totalDestroyed++;
+      }
+      return;
+    }
+
     this.options.reset(pooled.value);
     pooled.inUse = false;
     pooled.lastUsedAt = Date.now();
@@ -150,6 +168,8 @@ export class ObjectPool<T> {
       poolHits: this.stats.poolHits,
       totalCreated: this.stats.totalCreated,
       totalDestroyed: this.stats.totalDestroyed,
+      utilizationRate: this.pool.length > 0 ? inUse / this.pool.length : 0,
+      capacityRate: this.pool.length / this.options.maxSize,
     };
   }
 

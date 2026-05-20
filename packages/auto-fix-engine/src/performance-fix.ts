@@ -78,6 +78,10 @@ export class PerformanceFix {
         if (body.includes(`${objVar}[${keyVar}]`)) {
           const indent = (line.match(/^(\s*)/) || [''])[1];
           lines[i] = `${indent}for (const [${keyVar}, value] of Object.entries(${objVar}))`;
+          // Update references in the body: obj[key] -> value
+          for (let j = bodyStart; j < bodyEnd; j++) {
+            lines[j] = lines[j].replace(new RegExp(`${objVar}\\[${keyVar}\\]`, 'g'), 'value');
+          }
           changes.push({
             description: `Converted for-in to for-of with Object.entries for '${objVar}'`,
             original: line,
@@ -86,6 +90,37 @@ export class PerformanceFix {
             column: 1,
           });
           modified = true;
+        }
+      }
+
+      // Optimize for...of loops: if only index is needed, suggest array methods
+      const forOfPattern = /for\s*\(\s*const\s+(\w+)\s+of\s+(\w+)\s*\)/;
+      const forOfMatch = line.match(forOfPattern);
+      if (forOfMatch) {
+        const itemVar = forOfMatch[1];
+        const arrayName = forOfMatch[2];
+        const bodyStart = i + 1;
+        const bodyEnd = bodyStart < lines.length ? lines.slice(bodyStart).findIndex(l => l.trim() === '}') + bodyStart : bodyStart;
+        const body = lines.slice(bodyStart, bodyEnd).join('\n');
+        // If body is a single push/operation, could be a map/filter
+        if (body.trim().split('\n').length === 1 && body.includes('push(') && body.includes(itemVar)) {
+          const indent = (line.match(/^(\s*)/) || [''])[1];
+          // This is a simple case - the optimization is already decent as for...of
+          // Just ensure no further changes needed
+        }
+      }
+
+      // Optimize generator functions: cache yielded values
+      const generatorPattern = /function\s*\*\s*(\w+)/;
+      const generatorMatch = line.match(generatorPattern);
+      if (generatorMatch) {
+        // Generator functions can benefit from lazy evaluation - no specific optimization needed
+        // but we can check for yield* delegation optimization
+        const bodyStart = i + 1;
+        const bodyEnd = bodyStart < lines.length ? lines.slice(bodyStart).findIndex(l => l.trim() === '}') + bodyStart : bodyStart;
+        const body = lines.slice(bodyStart, bodyEnd).join('\n');
+        if (body.includes('yield*') && body.includes('.next()')) {
+          // yield* with manual .next() calls is suboptimal but hard to auto-fix
         }
       }
     }
@@ -244,10 +279,13 @@ export class PerformanceFix {
           lines.splice(i, 0, cacheLine);
 
           // Add cache check at the start of the function body
-          const keyExpr = params ? params.split(',').map((p) => p.trim().split('=')[0].trim()).join(', ') : '""';
+          const paramNames = params ? params.split(',').map((p) => p.trim().split('=')[0].trim()).filter(Boolean) : [];
+          const keyExpr = paramNames.length > 0 ? paramNames.join(', ') : '""';
+          const isAsync = line.includes('async ');
+          const returnKeyword = isAsync ? 'return await' : 'return';
           const cacheCheck =
             `${indent}  const cacheKey = JSON.stringify([${keyExpr}]);\n` +
-            `${indent}  if (${cacheName}.has(cacheKey)) return ${cacheName}.get(cacheKey);`;
+            `${indent}  if (${cacheName}.has(cacheKey)) ${returnKeyword} ${cacheName}.get(cacheKey);`;
 
           // Find the opening brace
           const braceIndex = i + 1 + lines.slice(i + 1).findIndex((l) => l.includes('{'));
@@ -433,5 +471,38 @@ export class PerformanceFix {
     }
 
     return issues;
+  }
+
+  /**
+   * Benchmark a code snippet before and after optimization.
+   * Measures execution time using performance.now() if available.
+   * @param beforeCode - The code before optimization (as a string)
+   * @param afterCode - The code after optimization (as a string)
+   * @param iterations - Number of iterations to run (default: 1000)
+   * @returns Object with before/after timing information
+   */
+  benchmark(beforeCode: string, afterCode: string, iterations: number = 1000): { beforeMs: number; afterMs: number; improvement: number } {
+    const measure = (codeStr: string): number => {
+      try {
+        const fn = new Function(codeStr);
+        const start = performance.now();
+        for (let i = 0; i < iterations; i++) {
+          fn();
+        }
+        return performance.now() - start;
+      } catch {
+        return -1; // Cannot measure
+      }
+    };
+
+    const beforeMs = measure(beforeCode);
+    const afterMs = measure(afterCode);
+
+    let improvement = 0;
+    if (beforeMs > 0 && afterMs > 0) {
+      improvement = ((beforeMs - afterMs) / beforeMs) * 100;
+    }
+
+    return { beforeMs, afterMs, improvement };
   }
 }

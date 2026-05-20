@@ -21,49 +21,88 @@ interface BenchmarkResult {
   totalTimeMs: number;
   opsPerSecond: number;
   avgTimeMicros: number;
+  minTimeMicros?: number;
+  maxTimeMicros?: number;
+  medianTimeMicros?: number;
+  p95TimeMicros?: number;
+  stdDevMicros?: number;
+  runCount?: number;
 }
 
 const results: BenchmarkResult[] = [];
 
-function benchmarkSync(name: string, fn: () => void, iterations: number = 100000): void {
+function benchmarkSync(name: string, fn: () => void, iterations: number = 100000, runs: number = 5): void {
   // Warmup
   for (let i = 0; i < Math.min(iterations / 10, 1000); i++) {
     fn();
   }
 
-  const start = performance.now();
-  for (let i = 0; i < iterations; i++) {
-    fn();
+  const runTimes: number[] = [];
+
+  for (let run = 0; run < runs; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      fn();
+    }
+    runTimes.push(performance.now() - start);
   }
-  const totalTimeMs = performance.now() - start;
+
+  // Compute statistics
+  const totalTimeMs = runTimes.reduce((a, b) => a + b, 0);
+  const avgTimeMs = totalTimeMs / runs;
+  const perIterMicros = runTimes.map(t => (t / iterations) * 1000);
+  const minMicros = Math.min(...perIterMicros);
+  const maxMicros = Math.max(...perIterMicros);
+  const sorted = [...perIterMicros].sort((a, b) => a - b);
+  const medianMicros = sorted[Math.floor(sorted.length / 2)]!;
+  const p95Micros = sorted[Math.floor(sorted.length * 0.95)]!;
+  const mean = perIterMicros.reduce((a, b) => a + b, 0) / perIterMicros.length;
+  const variance = perIterMicros.reduce((a, b) => a + (b - mean) ** 2, 0) / perIterMicros.length;
+  const stdDevMicros = Math.sqrt(variance);
 
   results.push({
     name,
     iterations,
-    totalTimeMs: Math.round(totalTimeMs * 100) / 100,
-    opsPerSecond: Math.round((iterations / totalTimeMs) * 1000),
-    avgTimeMicros: Math.round((totalTimeMs / iterations) * 1000000) / 1000,
+    totalTimeMs: Math.round(avgTimeMs * 100) / 100,
+    opsPerSecond: Math.round((iterations / avgTimeMs) * 1000),
+    avgTimeMicros: Math.round(mean * 1000) / 1000,
+    minTimeMicros: Math.round(minMicros * 1000) / 1000,
+    maxTimeMicros: Math.round(maxMicros * 1000) / 1000,
+    medianTimeMicros: Math.round(medianMicros * 1000) / 1000,
+    p95TimeMicros: Math.round(p95Micros * 1000) / 1000,
+    stdDevMicros: Math.round(stdDevMicros * 1000) / 1000,
+    runCount: runs,
   });
 }
 
-async function benchmarkAsync(name: string, fn: () => Promise<void>, iterations: number = 1000): Promise<void> {
+async function benchmarkAsync(name: string, fn: () => Promise<void>, iterations: number = 1000, runs: number = 3): Promise<void> {
   // Warmup
   for (let i = 0; i < Math.min(iterations / 10, 100); i++) {
     await fn();
   }
 
-  const start = performance.now();
-  for (let i = 0; i < iterations; i++) {
-    await fn();
+  const runTimes: number[] = [];
+
+  for (let run = 0; run < runs; run++) {
+    const start = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      await fn();
+    }
+    runTimes.push(performance.now() - start);
   }
-  const totalTimeMs = performance.now() - start;
+
+  const totalTimeMs = runTimes.reduce((a, b) => a + b, 0);
+  const avgTimeMs = totalTimeMs / runs;
+  const perIterMicros = runTimes.map(t => (t / iterations) * 1000);
+  const mean = perIterMicros.reduce((a, b) => a + b, 0) / perIterMicros.length;
 
   results.push({
     name,
     iterations,
-    totalTimeMs: Math.round(totalTimeMs * 100) / 100,
-    opsPerSecond: Math.round((iterations / totalTimeMs) * 1000),
-    avgTimeMicros: Math.round((totalTimeMs / iterations) * 1000000) / 1000,
+    totalTimeMs: Math.round(avgTimeMs * 100) / 100,
+    opsPerSecond: Math.round((iterations / avgTimeMs) * 1000),
+    avgTimeMicros: Math.round(mean * 1000) / 1000,
+    runCount: runs,
   });
 }
 

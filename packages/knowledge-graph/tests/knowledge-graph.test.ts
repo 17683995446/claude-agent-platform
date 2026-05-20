@@ -51,9 +51,13 @@ describe('GraphStore', () => {
     expect(node!.properties).toEqual({});
   });
 
-  it('should throw when adding a duplicate node', () => {
-    store.addNode('n1');
-    expect(() => store.addNode('n1')).toThrow("Node with id 'n1' already exists");
+  it('should upsert when adding a duplicate node', () => {
+    store.addNode('n1', ['A'], { x: 1 });
+    store.addNode('n1', ['B'], { y: 2 });
+    const node = store.getNode('n1');
+    expect(node).toBeDefined();
+    expect(node!.labels).toEqual(['B']);
+    expect(node!.properties).toEqual({ x: 1, y: 2 });
   });
 
   it('should add an edge between two nodes', () => {

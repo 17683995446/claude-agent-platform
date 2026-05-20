@@ -74,13 +74,13 @@ export class SecurityScanner {
   ];
 
   private secretPatterns: Array<{ pattern: RegExp; name: string; severity: VulnerabilitySeverity }> = [
-    { pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*['"][^'"]{8,}['"]/gi, name: "API Key", severity: "critical" },
-    { pattern: /(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{6,}['"]/gi, name: "Password", severity: "critical" },
-    { pattern: /(?:secret|token|auth)\s*[:=]\s*['"][^'"]{10,}['"]/gi, name: "Secret/Token", severity: "high" },
-    { pattern: /(?:private[_-]?key|privatekey)\s*[:=]\s*['"]-----BEGIN[^'"]+['"]/gi, name: "Private Key", severity: "critical" },
-    { pattern: /AWS_ACCESS_KEY_ID\s*[:=]\s*['"][A-Z0-9]{16,}['"]/gi, name: "AWS Access Key", severity: "critical" },
-    { pattern: /AWS_SECRET_ACCESS_KEY\s*[:=]\s*['"][A-Za-z0-9/+=]{32,}['"]/gi, name: "AWS Secret Key", severity: "critical" },
-    { pattern: /(?:github|gitlab)_token\s*[:=]\s*['"][a-zA-Z0-9]{30,}['"]/gi, name: "Git Token", severity: "critical" },
+    { pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*(?:\\"|')[^'\\"]{8,}(?:\\"|')/gi, name: "API Key", severity: "critical" },
+    { pattern: /(?:password|passwd|pwd)\s*[:=]\s*(?:\\"|')[^'\\"]{6,}(?:\\"|')/gi, name: "Password", severity: "critical" },
+    { pattern: /(?:secret|token|auth)\s*[:=]\s*(?:\\"|')[^'\\"]{10,}(?:\\"|')/gi, name: "Secret/Token", severity: "high" },
+    { pattern: /(?:private[_-]?key|privatekey)\s*[:=]\s*(?:\\"|')-----BEGIN[^'\\"]+(?:\\"|')/gi, name: "Private Key", severity: "critical" },
+    { pattern: /AWS_ACCESS_KEY_ID\s*[:=]\s*(?:\\"|')[A-Z0-9]{16,}(?:\\"|')/gi, name: "AWS Access Key", severity: "critical" },
+    { pattern: /AWS_SECRET_ACCESS_KEY\s*[:=]\s*(?:\\"|')[A-Za-z0-9/+=]{32,}(?:\\"|')/gi, name: "AWS Secret Key", severity: "critical" },
+    { pattern: /(?:github|gitlab)_token\s*[:=]\s*(?:\\"|')[a-zA-Z0-9]{30,}(?:\\"|')/gi, name: "Git Token", severity: "critical" },
     { pattern: /(?:mongodb|mysql|postgres):\/\/[^\s'"]+/gi, name: "Database Connection String", severity: "high" },
   ];
 
@@ -319,6 +319,16 @@ export class SecurityScanner {
   private scanNodeForInjection(node: ASTNode, vulns: Vulnerability[]): void {
     const code = JSON.stringify(node);
 
+    // Check for parameterized query patterns (these are safe)
+    const parameterizedPatterns = [
+      /parameterized|prepared\s*statement|\.query\s*\(\s*\?|\.execute\s*\(\s*\?|pool\.query|knex|sequelize|typeorm|prisma/i,
+    ];
+    const isParameterized = parameterizedPatterns.some((p) => p.test(code));
+    if (isParameterized) {
+      this.walkChildren(node, (child) => this.scanNodeForInjection(child, vulns));
+      return;
+    }
+
     const injectionPatterns = [
       { pattern: /\$\{.*?\}/, desc: "Template literal injection", severity: "medium" as VulnerabilitySeverity, cwe: "CWE-96" },
       { pattern: /(?:query|sql)\s*\+\s*/, desc: "String concatenation in SQL query", severity: "critical" as VulnerabilitySeverity, cwe: "CWE-89" },
@@ -378,6 +388,13 @@ export class SecurityScanner {
     }
 
     this.walkChildren(node, (child) => this.scanNodeForXSS(child, vulns));
+  }
+
+  /**
+   * Escape special regex characters in a string to prevent regex injection.
+   */
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   private walkChildren(node: ASTNode, visitor: (child: ASTNode) => void): void {

@@ -12,11 +12,102 @@ export type QuoteStyle = 'single' | 'double' | 'backtick';
 /** Style options for indentation fixing */
 export type IndentStyle = 'spaces' | 'tabs';
 
+/** Locale for localized messages */
+export type Locale = 'en' | 'zh' | 'ja' | 'es' | 'de' | 'fr';
+
+/** Localization messages */
+const messages: Record<string, Record<Locale, string>> = {
+  'added_missing_imports': {
+    en: 'Added missing import(s)',
+    zh: '添加了缺失的导入',
+    ja: '不足しているインポートを追加しました',
+    es: 'Importaciones faltantes agregadas',
+    de: 'Fehlende Importe hinzugefugt',
+    fr: 'Importations manquantes ajoutees',
+  },
+  'renamed_unused_variable': {
+    en: 'Renamed unused variable',
+    zh: '重命名了未使用的变量',
+    ja: '未使用の変数をリネームしました',
+    es: 'Variable no utilizada renombrada',
+    de: 'Unbenutzte Variable umbenannt',
+    fr: 'Variable inutilisee renommee',
+  },
+  'added_missing_semicolon': {
+    en: 'Added missing semicolon',
+    zh: '添加了缺失的分号',
+    ja: 'セミコロンを追加しました',
+    es: 'Punto y coma faltante agregado',
+    de: 'Fehlendes Semikolon hinzugefugt',
+    fr: 'Point-virgule manquant ajoute',
+  },
+  'removed_trailing_comma': {
+    en: 'Removed trailing comma',
+    zh: '移除了尾随逗号',
+    ja: '末尾のカンマを削除しました',
+    es: 'Coma final eliminada',
+    de: 'Nachkomma entfernt',
+    fr: 'Virgule finale supprimee',
+  },
+  'replaced_tabs_with_spaces': {
+    en: 'Replaced tabs with spaces',
+    zh: '将制表符替换为空格',
+    ja: 'タブをスペースに置換しました',
+    es: 'Tabulaciones reemplazadas con espacios',
+    de: 'Tabs durch Leerzeichen ersetzt',
+    fr: 'Tabulations remplacees par des espaces',
+  },
+  'replaced_spaces_with_tabs': {
+    en: 'Replaced spaces with tabs',
+    zh: '将空格替换为制表符',
+    ja: 'スペースをタブに置換しました',
+    es: 'Espacios reemplazados con tabulaciones',
+    de: 'Leerzeichen durch Tabs ersetzt',
+    fr: 'Espaces remplaces par des tabulations',
+  },
+  'normalized_quotes': {
+    en: 'Normalized quotes',
+    zh: '统一了引号风格',
+    ja: '引用符を正規化しました',
+    es: 'Comillas normalizadas',
+    de: 'Anfuhrungszeichen normalisiert',
+    fr: 'Guillemets normalises',
+  },
+};
+
 /**
  * QuickFix - Provides common quick fixes for linting and TypeScript errors.
  * All methods are pure functions that take code strings and return fix results.
  */
 export class QuickFix {
+  private locale: Locale;
+
+  constructor(locale: Locale = 'en') {
+    this.locale = locale;
+  }
+
+  /**
+   * Set the locale for fix descriptions.
+   * @param locale - The locale to use
+   */
+  setLocale(locale: Locale): void {
+    this.locale = locale;
+  }
+
+  /**
+   * Get a localized message.
+   */
+  private msg(key: string, params?: Record<string, string>): string {
+    const entry = messages[key];
+    if (!entry) return key;
+    let text = entry[this.locale] || entry['en'];
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        text = text.replace(`{${k}}`, v);
+      }
+    }
+    return text;
+  }
   /**
    * Fix missing import statements by adding import declarations at the top of the file.
    * @param code - The source code
@@ -49,7 +140,7 @@ export class QuickFix {
     const newCode = importStatements + '\n' + code;
 
     changes.push({
-      description: `Added ${missing.length} missing import(s)`,
+      description: this.msg('added_missing_imports', { count: String(missing.length) }),
       original: '',
       replacement: importStatements,
       line: 1,
@@ -122,9 +213,38 @@ export class QuickFix {
     const changes: CodeChange[] = [];
     const lines = code.split('\n');
     let modified = false;
+    let inTemplateLiteral = false;
+    let inJSX = false;
 
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trimEnd();
+
+      // Track template literal boundaries
+      if (inTemplateLiteral) {
+        if (trimmed.includes('`') && !trimmed.includes('\\`')) {
+          inTemplateLiteral = false;
+        }
+        continue;
+      }
+      // Check if this line opens a template literal that spans multiple lines
+      const backtickCount = (trimmed.match(/`/g) || []).length;
+      if (backtickCount === 1 && !trimmed.includes('\\`')) {
+        inTemplateLiteral = true;
+        continue;
+      }
+
+      // Track JSX boundaries (simple heuristic)
+      if (inJSX) {
+        if (trimmed.includes('/>') || (trimmed.includes('</') && trimmed.includes('>'))) {
+          inJSX = false;
+        }
+        continue;
+      }
+      // Detect JSX opening tags
+      if (/^\s*<[A-Z]/.test(lines[i]) && !trimmed.includes('/>') && !(trimmed.includes('</') && trimmed.includes('>'))) {
+        inJSX = true;
+        continue;
+      }
 
       // Skip empty lines, comments, lines ending with brackets, or lines that already have semicolons
       if (
@@ -141,9 +261,14 @@ export class QuickFix {
         trimmed.endsWith("'") ||
         trimmed.endsWith('"') ||
         trimmed.endsWith(']') ||
+        trimmed.endsWith('>') ||
         trimmed.includes('=>') ||
         trimmed.startsWith('import') ||
-        trimmed.startsWith('export') && trimmed.includes('from')
+        trimmed.startsWith('export') && trimmed.includes('from') ||
+        trimmed.endsWith('?') ||
+        trimmed.endsWith(':') ||
+        trimmed.startsWith('<') && trimmed.endsWith('/>') ||
+        trimmed.startsWith('</')
       ) {
         continue;
       }

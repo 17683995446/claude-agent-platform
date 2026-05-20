@@ -1223,13 +1223,13 @@ describe('FixValidator', () => {
     it('should detect unbalanced braces', () => {
       const result = validator.validateSyntax('function foo() { return 1;');
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('Unbalanced braces'))).toBe(true);
+      expect(result.errors.some(e => e.includes('closing brace'))).toBe(true);
     });
 
     it('should detect unbalanced parentheses', () => {
       const result = validator.validateSyntax('console.log("hello";');
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('Unbalanced parentheses'))).toBe(true);
+      expect(result.errors.some(e => e.includes('closing parenthesis'))).toBe(true);
     });
 
     it('should detect double semicolons', () => {

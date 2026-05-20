@@ -170,8 +170,9 @@ export class MetricsCollector {
     }
 
     const averageFunctionLength = functions > 0 ? totalFunctionLines / functions : 0;
-    const averageComplexity = complexities.length > 0 ? complexities.reduce((a, b) => a + b, 0) / complexities.length : 0;
-    const maxComplexity = complexities.length > 0 ? Math.max(...complexities) : 0;
+    const safeComplexities = complexities.map((c) => c ?? 0);
+    const averageComplexity = safeComplexities.length > 0 ? safeComplexities.reduce((a, b) => a + b, 0) / safeComplexities.length : 0;
+    const maxComplexity = safeComplexities.length > 0 ? Math.max(...safeComplexities) : 0;
 
     const maintainabilityIndex = this.calculateMaintainabilityIndex(
       totalLines,
@@ -389,10 +390,12 @@ export class MetricsCollector {
   ): number {
     // Simplified maintainability index formula
     // Original: MI = 171 - 5.2 * ln(V) - 0.23 * G - 16.2 * ln(LOC)
-    // Simplified version:
+    // Where V = Halstead Volume, G = Cyclomatic Complexity, LOC = Lines of Code
+    // Simplified: use loc as proxy for volume but don't double-count
     if (loc === 0) return 100;
 
-    const volume = Math.max(1, loc);
+    // Use Halstead-like volume estimation: operators + operands proxy
+    const volume = Math.max(1, loc * 0.8); // Approximate volume (slightly less than LOC)
     const lnVolume = Math.log(volume);
     const lnLOC = Math.log(Math.max(1, loc));
 

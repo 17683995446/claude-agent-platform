@@ -21,7 +21,7 @@ export type {
 
 // Quick Fixes
 export { QuickFix } from './quick-fix.js';
-export type { QuoteStyle, IndentStyle } from './quick-fix.js';
+export type { QuoteStyle, IndentStyle, Locale } from './quick-fix.js';
 
 // Refactoring Engine
 export { RefactoringEngine } from './refactoring-engine.js';

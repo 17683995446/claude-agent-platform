@@ -63,6 +63,7 @@ export class CacheStorage<T> implements IStorage<T> {
   private levels: CacheLevelConfig[] = [];
   private writePolicy: WritePolicy;
   private levelStats: CacheLevelStats[] = [];
+  private operationQueue: Promise<void> = Promise.resolve();
 
   constructor(config: CacheConfig) {
     this.writePolicy = config.writePolicy ?? 'write-through';
@@ -76,12 +77,41 @@ export class CacheStorage<T> implements IStorage<T> {
     }
   }
 
+  /**
+   * 将操作加入队列以保证读写顺序一致性
+   */
+  private enqueue<R>(fn: () => Promise<R>): Promise<R> {
+    return new Promise<R>((resolve, reject) => {
+      this.operationQueue = this.operationQueue
+        .then(() => fn())
+        .then(resolve, reject);
+    });
+  }
+
   private getStorage(level: number): IStorage<T> {
     return this.levels[level].storage as IStorage<T>;
   }
 
   private isEnabled(level: number): boolean {
     return this.levels[level].enabled !== false;
+  }
+
+  /**
+   * 写回带重试机制，避免静默丢失数据
+   */
+  private writeBackWithRetry(level: number, key: string, value: T, options?: SetOptions, retries = 3): void {
+    const attempt = async (remaining: number): Promise<void> => {
+      try {
+        await this.getStorage(level).set(key, value, options);
+      } catch {
+        if (remaining > 0) {
+          await new Promise((r) => setTimeout(r, 100 * (retries - remaining)));
+          await attempt(remaining - 1);
+        }
+        // 重试耗尽，记录错误（无法 throw 因为是异步 fire-and-forget）
+      }
+    };
+    attempt(retries).catch(() => {});
   }
 
   /**
@@ -105,53 +135,58 @@ export class CacheStorage<T> implements IStorage<T> {
   // ---- IStorage 接口实现 ----
 
   async get(key: string): Promise<T | undefined> {
-    for (let i = 0; i < this.levels.length; i++) {
-      if (!this.isEnabled(i)) continue;
-      try {
-        const value = await this.getStorage(i).get(key);
-        if (value !== undefined) {
-          this.levelStats[i].hits++;
-          // Read-through: 回填上层缓存
-          for (let j = 0; j < i; j++) {
-            if (this.isEnabled(j)) {
-              try {
-                await this.getStorage(j).set(key, value);
-              } catch {
-                // 忽略回填错误
+    return this.enqueue(async () => {
+      for (let i = 0; i < this.levels.length; i++) {
+        if (!this.isEnabled(i)) continue;
+        try {
+          const value = await this.getStorage(i).get(key);
+          if (value !== undefined) {
+            this.levelStats[i].hits++;
+            // Read-through: 回填上层缓存
+            for (let j = 0; j < i; j++) {
+              if (this.isEnabled(j)) {
+                try {
+                  await this.getStorage(j).set(key, value);
+                } catch {
+                  // 忽略回填错误
+                }
               }
             }
+            return value;
           }
-          return value;
+          this.levelStats[i].misses++;
+        } catch {
+          this.levelStats[i].misses++;
         }
-        this.levelStats[i].misses++;
-      } catch {
-        this.levelStats[i].misses++;
       }
-    }
-    return undefined;
+      return undefined;
+    });
   }
 
   async set(key: string, value: T, options?: SetOptions): Promise<void> {
+    // 负 TTL 视为 0（立即过期），防止永不过期
+    const normalizedOptions = options && options.ttl !== undefined && options.ttl < 0
+      ? { ...options, ttl: 0 }
+      : options;
+
     if (this.writePolicy === 'write-through') {
       // Write-through: 写入所有层级
       for (let i = 0; i < this.levels.length; i++) {
         if (this.isEnabled(i)) {
-          const levelTtl = this.levels[i].ttl ?? options?.ttl;
-          await this.getStorage(i).set(key, value, levelTtl ? { ...options, ttl: levelTtl } : options);
+          const levelTtl = this.levels[i].ttl ?? normalizedOptions?.ttl;
+          await this.getStorage(i).set(key, value, levelTtl ? { ...normalizedOptions, ttl: levelTtl } : normalizedOptions);
         }
       }
     } else {
-      // Write-back: 只写最上层，异步写下层
+      // Write-back: 只写最上层，异步写下层（带重试）
       const topEnabled = this.levels.findIndex((l) => l.enabled !== false);
       if (topEnabled >= 0) {
-        await this.getStorage(topEnabled).set(key, value, options);
-        // 异步写入下层
+        await this.getStorage(topEnabled).set(key, value, normalizedOptions);
+        // 异步写入下层，带重试
         for (let i = topEnabled + 1; i < this.levels.length; i++) {
           if (this.isEnabled(i)) {
-            const levelTtl = this.levels[i].ttl ?? options?.ttl;
-            this.getStorage(i)
-              .set(key, value, levelTtl ? { ...options, ttl: levelTtl } : options)
-              .catch(() => {});
+            const levelTtl = this.levels[i].ttl ?? normalizedOptions?.ttl;
+            this.writeBackWithRetry(i, key, value, levelTtl ? { ...normalizedOptions, ttl: levelTtl } : normalizedOptions);
           }
         }
       }
@@ -174,12 +209,32 @@ export class CacheStorage<T> implements IStorage<T> {
   }
 
   async has(key: string): Promise<boolean> {
-    for (let i = 0; i < this.levels.length; i++) {
-      if (!this.isEnabled(i)) continue;
-      const result = await this.getStorage(i).has(key);
-      if (result) return true;
-    }
-    return false;
+    return this.enqueue(async () => {
+      // 从最底层向上检查，确保数据确实存在
+      for (let i = this.levels.length - 1; i >= 0; i--) {
+        if (!this.isEnabled(i)) continue;
+        const result = await this.getStorage(i).has(key);
+        if (result) {
+          // 找到后回填上层缓存
+          const value = await this.getStorage(i).get(key);
+          if (value !== undefined) {
+            for (let j = 0; j < i; j++) {
+              if (this.isEnabled(j)) {
+                try {
+                  await this.getStorage(j).set(key, value);
+                } catch {
+                  // 忽略回填错误
+                }
+              }
+            }
+            return true;
+          }
+          // 底层存在但无法获取值，可能已过期
+          return false;
+        }
+      }
+      return false;
+    });
   }
 
   async keys(pattern?: string): Promise<string[]> {
@@ -228,7 +283,10 @@ export class CacheStorage<T> implements IStorage<T> {
 
   async stats(): Promise<StorageStats> {
     const topStats = await this.getStorage(0).stats();
-    return topStats;
+    return {
+      ...topStats,
+      size: await this.size(),
+    };
   }
 
   async getEntry(key: string): Promise<StorageEntry<T> | undefined> {
@@ -242,6 +300,21 @@ export class CacheStorage<T> implements IStorage<T> {
       }
     }
     return undefined;
+  }
+
+  async rename(oldKey: string, newKey: string): Promise<boolean> {
+    const value = await this.get(oldKey);
+    if (value === undefined) return false;
+    await this.set(newKey, value);
+    await this.delete(oldKey);
+    return true;
+  }
+
+  async copy(sourceKey: string, targetKey: string): Promise<boolean> {
+    const value = await this.get(sourceKey);
+    if (value === undefined) return false;
+    await this.set(targetKey, value);
+    return true;
   }
 
   // ---- 批量操作 ----

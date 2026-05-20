@@ -138,11 +138,7 @@ export class EncryptedStorage<T> implements IStorage<T> {
     if (raw === undefined) return undefined;
 
     if (this.isEncryptedPayload(raw)) {
-      try {
-        return this.decrypt(raw);
-      } catch {
-        return undefined;
-      }
+      return this.decrypt(raw);
     }
 
     // 未加密的数据直接返回
@@ -187,17 +183,28 @@ export class EncryptedStorage<T> implements IStorage<T> {
     if (!entry) return undefined;
 
     if (this.isEncryptedPayload(entry.value)) {
-      try {
-        return {
-          ...entry,
-          value: this.decrypt(entry.value),
-        };
-      } catch {
-        return undefined;
-      }
+      return {
+        ...entry,
+        value: this.decrypt(entry.value),
+      };
     }
 
     return entry;
+  }
+
+  async rename(oldKey: string, newKey: string): Promise<boolean> {
+    const value = await this.get(oldKey);
+    if (value === undefined) return false;
+    await this.set(newKey, value);
+    await this.delete(oldKey);
+    return true;
+  }
+
+  async copy(sourceKey: string, targetKey: string): Promise<boolean> {
+    const value = await this.get(sourceKey);
+    if (value === undefined) return false;
+    await this.set(targetKey, value);
+    return true;
   }
 
   // ---- 密钥轮换 ----
@@ -209,24 +216,34 @@ export class EncryptedStorage<T> implements IStorage<T> {
     const allKeys = await this.inner.keys();
     let rotated = 0;
 
+    // 先用当前密钥解密所有数据，再统一用新密钥重新加密
+    const decryptedEntries: Array<{ key: string; value: T }> = [];
     for (const key of allKeys) {
       const raw = await this.inner.get(key);
       if (raw === undefined) continue;
 
       if (this.isEncryptedPayload(raw)) {
         try {
-          // 先用当前密钥解密
           const value = this.decrypt(raw);
-          // 更新密钥
-          this.salt = newSalt ?? randomBytes(SALT_LENGTH).toString('hex');
-          this.derivedKey = this.deriveKey(newPassphrase, this.salt);
-          // 用新密钥重新加密
-          const reEncrypted = this.encrypt(value);
-          await this.inner.set(key, reEncrypted as unknown as T);
-          rotated++;
+          decryptedEntries.push({ key, value });
         } catch {
           // 跳过无法解密的条目
         }
+      }
+    }
+
+    // 更新密钥（只更新一次）
+    this.salt = newSalt ?? randomBytes(SALT_LENGTH).toString('hex');
+    this.derivedKey = this.deriveKey(newPassphrase, this.salt);
+
+    // 用新密钥重新加密所有已解密的条目
+    for (const { key, value } of decryptedEntries) {
+      try {
+        const reEncrypted = this.encrypt(value);
+        await this.inner.set(key, reEncrypted as unknown as T);
+        rotated++;
+      } catch {
+        // 跳过无法加密的条目
       }
     }
 

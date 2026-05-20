@@ -131,9 +131,10 @@ export class GraphQuery {
    * Find the shortest path between two nodes using BFS.
    * @param from - Start node ID
    * @param to - End node ID
+   * @param weightFn - Optional weight function for weighted shortest path (uses BFS if not provided)
    * @returns Path result or null if no path exists
    */
-  shortestPath(from: string, to: string): PathResult | null {
+  shortestPath(from: string, to: string, weightFn?: (from: string, to: string) => number): PathResult | null {
     if (!this.store.hasNode(from) || !this.store.hasNode(to)) {
       return null;
     }
@@ -142,6 +143,12 @@ export class GraphQuery {
       return { nodes: [node], edges: [], length: 0 };
     }
 
+    // Use Dijkstra for weighted graphs
+    if (weightFn) {
+      return this.weightedShortestPath(from, to, weightFn);
+    }
+
+    // Unweighted BFS
     const visited = new Set<string>();
     const queue: Array<{ nodeId: string; path: string[]; edgeIds: string[] }> = [
       { nodeId: from, path: [from], edgeIds: [] }
@@ -175,6 +182,77 @@ export class GraphQuery {
     }
 
     return null;
+  }
+
+  /**
+   * Find the shortest path using Dijkstra's algorithm for weighted graphs.
+   */
+  private weightedShortestPath(from: string, to: string, weightFn: (from: string, to: string) => number): PathResult | null {
+    const distances = new Map<string, number>();
+    const previous = new Map<string, string>();
+    const previousEdge = new Map<string, string>();
+    const visited = new Set<string>();
+
+    const allNodes = this.store.getAllNodes();
+    for (const node of allNodes) {
+      distances.set(node.id, Infinity);
+    }
+    distances.set(from, 0);
+
+    while (true) {
+      // Find unvisited node with minimum distance
+      let current: string | null = null;
+      let minDist = Infinity;
+      for (const nodeId of allNodes) {
+        if (visited.has(nodeId)) continue;
+        const d = distances.get(nodeId)!;
+        if (d < minDist) {
+          minDist = d;
+          current = nodeId;
+        }
+      }
+
+      if (current === null || minDist === Infinity) break;
+      if (current === to) break;
+
+      visited.add(current);
+
+      const neighbors = this.store.getNeighbors(current, 'out');
+      for (const neighbor of neighbors) {
+        if (visited.has(neighbor.id)) continue;
+        const weight = weightFn(current, neighbor.id);
+        const alt = distances.get(current)! + weight;
+        if (alt < distances.get(neighbor.id)!) {
+          distances.set(neighbor.id, alt);
+          previous.set(neighbor.id, current);
+          // Find the edge between current and neighbor
+          const edges = this.store.getEdgesBetween(current, neighbor.id);
+          if (edges.length > 0) {
+            previousEdge.set(neighbor.id, edges[0].id);
+          }
+        }
+      }
+    }
+
+    const finalDist = distances.get(to);
+    if (finalDist === undefined || finalDist === Infinity) return null;
+
+    // Reconstruct path
+    const pathIds: string[] = [];
+    const edgeIds: string[] = [];
+    let current: string | undefined = to;
+    while (current !== undefined) {
+      pathIds.unshift(current);
+      const edgeId = previousEdge.get(current);
+      if (edgeId) edgeIds.unshift(edgeId);
+      current = previous.get(current);
+    }
+
+    return {
+      nodes: pathIds.map(id => this.store.getNode(id)!).filter(Boolean),
+      edges: edgeIds.map(id => this.store.getEdge(id)!).filter(Boolean),
+      length: pathIds.length - 1,
+    };
   }
 
   /**
@@ -307,7 +385,7 @@ export class GraphQuery {
             if (existing.id !== candidate.id) continue;
           }
 
-          const newRow = { ...row, [pattern.nodeVar]: candidate };
+          const baseRow = { ...row, [pattern.nodeVar]: candidate };
 
           // Handle edge pattern
           if (pattern.targetVar) {
@@ -318,10 +396,36 @@ export class GraphQuery {
                 const existing = row[pattern.targetVar] as GraphNode;
                 if (existing.id !== neighbor.id) continue;
               }
-              newRows.push({ ...newRow, [pattern.targetVar]: neighbor });
+
+              // Apply edge type filtering
+              if (pattern.edgeType) {
+                const edgesBetween = this.store.getEdgesBetween(candidate.id, neighbor.id);
+                const hasMatchingEdge = edgesBetween.some(e => e.type === pattern.edgeType);
+                if (!hasMatchingEdge) continue;
+
+                // Bind edge variable if specified
+                const resultRow = { ...baseRow, [pattern.targetVar]: neighbor };
+                if (pattern.edgeVar) {
+                  const matchingEdge = edgesBetween.find(e => e.type === pattern.edgeType);
+                  if (matchingEdge) {
+                    resultRow[pattern.edgeVar] = matchingEdge;
+                  }
+                }
+                newRows.push(resultRow);
+              } else {
+                // Bind edge variable if specified (any edge)
+                const resultRow = { ...baseRow, [pattern.targetVar]: neighbor };
+                if (pattern.edgeVar) {
+                  const edgesBetween = this.store.getEdgesBetween(candidate.id, neighbor.id);
+                  if (edgesBetween.length > 0) {
+                    resultRow[pattern.edgeVar] = edgesBetween[0];
+                  }
+                }
+                newRows.push(resultRow);
+              }
             }
           } else {
-            newRows.push(newRow);
+            newRows.push(baseRow);
           }
         }
       }

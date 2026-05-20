@@ -41,6 +41,15 @@ export class TripleStore {
   private bySubject: Map<string, Set<string>> = new Map();
   private byPredicate: Map<string, Set<string>> = new Map();
   private byObject: Map<string, Set<string>> = new Map();
+  private maxTriples: number;
+
+  /**
+   * Create a new TripleStore.
+   * @param maxTriples - Maximum number of triples (0 for unlimited, default 0)
+   */
+  constructor(maxTriples: number = 0) {
+    this.maxTriples = maxTriples;
+  }
 
   /**
    * Add a triple to the store.
@@ -50,6 +59,10 @@ export class TripleStore {
    * @returns true if the triple was added, false if it already existed
    */
   addTriple(subject: string, predicate: string, object: string): boolean {
+    if (this.maxTriples > 0 && this.triples.size >= this.maxTriples) {
+      return false;
+    }
+
     const key = this.tripleKey(subject, predicate, object);
     if (this.triples.has(key)) return false;
 
@@ -144,8 +157,11 @@ export class TripleStore {
     const variables = selectMatch[1]
       .trim()
       .split(/[,\s]+/)
-      .map(v => v.replace(/^\?/, ''))
+      .map(v => v.replace(/^\?/, '').replace(/^["']|["']$/g, ''))
       .filter(Boolean);
+
+    // Normalize variable names: ensure consistent casing and no extra whitespace
+    const normalizedVariables = variables.map(v => v.trim());
 
     const whereClause = whereMatch[1].trim();
     const triplePatterns = this.parseWhereClause(whereClause);
@@ -195,7 +211,7 @@ export class TripleStore {
     // Project only requested variables
     const projected = bindings.map(binding => {
       const projected: Record<string, string> = {};
-      for (const v of variables) {
+      for (const v of normalizedVariables) {
         if (binding[v] !== undefined) {
           projected[v] = binding[v];
         }
@@ -203,7 +219,7 @@ export class TripleStore {
       return projected;
     });
 
-    return { variables, bindings: projected };
+    return { variables: normalizedVariables, bindings: projected };
   }
 
   /**
@@ -254,14 +270,16 @@ export class TripleStore {
    * Generate a unique key for a triple.
    */
   private tripleKey(subject: string, predicate: string, object: string): string {
-    return `${subject}|${predicate}|${object}`;
+    // Use JSON serialization to avoid delimiter collision with any character
+    // Format: JSON([subject, predicate, object])
+    return JSON.stringify([subject, predicate, object]);
   }
 
   /**
    * Parse a triple key back into its components.
    */
   private parseKey(key: string): Triple {
-    const parts = key.split('|');
+    const parts = JSON.parse(key) as [string, string, string];
     return {
       subject: parts[0],
       predicate: parts[1],
@@ -313,7 +331,7 @@ export class TripleStore {
     const patterns: TriplePattern[] = [];
 
     for (const stmt of statements) {
-      const parts = stmt.split(/\s+/).filter(Boolean);
+      const parts = this.tokenizeSparqlParts(stmt);
       if (parts.length >= 3) {
         patterns.push({
           subject: parts[0],
@@ -324,5 +342,34 @@ export class TripleStore {
     }
 
     return patterns;
+  }
+
+  /**
+   * Tokenize a SPARQL triple pattern, handling quoted strings.
+   */
+  private tokenizeSparqlParts(stmt: string): string[] {
+    const parts: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < stmt.length; i++) {
+      const char = stmt[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        current += char;
+      } else if (char === ' ' && !inQuotes) {
+        if (current.trim()) {
+          parts.push(current.trim());
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) {
+      parts.push(current.trim());
+    }
+
+    return parts;
   }
 }

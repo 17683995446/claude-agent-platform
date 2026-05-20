@@ -43,6 +43,8 @@ export interface IncrementalProcessorOptions {
   ignorePatterns?: RegExp[];
   /** 是否递归扫描子目录 */
   recursive?: boolean;
+  /** 是否使用深度比较（仅适用于对象内容） */
+  deepCompare?: boolean;
 }
 
 export interface IncrementalProcessorStats {
@@ -78,12 +80,31 @@ export class IncrementalProcessor {
       onChange: options?.onChange ?? (() => {}),
       ignorePatterns: options?.ignorePatterns ?? [],
       recursive: options?.recursive ?? true,
+      deepCompare: options?.deepCompare ?? false,
     };
   }
 
   /** 计算内容哈希 */
   static computeHash(content: string | Buffer): string {
     return createHash('md5').update(content).digest('hex');
+  }
+
+  /** 深度哈希：对对象进行深度序列化后计算哈希 */
+  static computeDeepHash(value: unknown): string {
+    const serialized = JSON.stringify(value, (_key, val) => {
+      if (typeof val === 'object' && val !== null) {
+        // Sort object keys for consistent hashing
+        if (!Array.isArray(val)) {
+          const sorted: Record<string, unknown> = {};
+          for (const k of Object.keys(val).sort()) {
+            sorted[k] = val[k];
+          }
+          return sorted;
+        }
+      }
+      return val;
+    });
+    return createHash('md5').update(serialized).digest('hex');
   }
 
   /** 扫描文件变更 */

@@ -82,6 +82,31 @@ export class Semaphore {
       this.release();
     }
   }
+
+  /** 销毁信号量，等待进行中的操作完成（带超时） */
+  async dispose(timeout: number = 5000): Promise<void> {
+    const startTime = Date.now();
+    // Wait for all acquired permits to be released
+    while (this.current > 0) {
+      if (Date.now() - startTime > timeout) {
+        // Force release: reject all waiters
+        for (const waiter of this.queue) {
+          if (waiter.timer) clearTimeout(waiter.timer);
+          waiter.reject(new Error('Semaphore disposed'));
+        }
+        this.queue.length = 0;
+        this.current = 0;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    // Reject remaining waiters
+    for (const waiter of this.queue) {
+      if (waiter.timer) clearTimeout(waiter.timer);
+      waiter.reject(new Error('Semaphore disposed'));
+    }
+    this.queue.length = 0;
+  }
 }
 
 // ---- RateLimiter (Token Bucket) ----
@@ -132,6 +157,11 @@ export class RateLimiter {
   getAvailableTokens(): number {
     this.refill();
     return this.tokens;
+  }
+
+  /** 释放令牌回桶中 */
+  release(count: number = 1): void {
+    this.tokens = Math.min(this.options.maxTokens, this.tokens + count);
   }
 
   /** 获取下次令牌可用时间（ms） */
@@ -262,16 +292,35 @@ export class ConcurrencyController {
   /** 释放执行许可 */
   release(): void {
     this.semaphore.release();
+    // Return tokens to rate limiter
+    if (this.rateLimiter) {
+      this.rateLimiter.release(1);
+    }
   }
 
   /** 使用控制器执行函数 */
-  async run<T>(fn: () => Promise<T>): Promise<T> {
+  async run<T>(fn: () => Promise<T>, timeout?: number): Promise<T> {
     await this.acquire();
     try {
+      if (timeout !== undefined) {
+        return await this.withTimeout(fn(), timeout);
+      }
       return await fn();
     } finally {
       this.release();
     }
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`ConcurrencyController: timeout after ${timeout}ms`)), timeout);
+      }),
+    ]).finally(() => {
+      clearTimeout(timer!);
+    });
   }
 
   /** 获取状态 */

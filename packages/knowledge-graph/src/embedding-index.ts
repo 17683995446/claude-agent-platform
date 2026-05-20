@@ -88,7 +88,58 @@ export class EmbeddingIndex {
   }
 
   /**
-   * Build an index from entities using an embedding function.
+   * Search for similar vectors (async batch version for large indices).
+   * @param vector - Query vector
+   * @param topK - Number of results to return
+   * @returns Promise resolving to array of similarity results sorted by score descending
+   */
+  async searchSimilarAsync(vector: number[], topK: number): Promise<SimilarityResult[]> {
+    if (vector.length !== this.dimension) {
+      throw new Error(`Query vector dimension ${vector.length} does not match expected ${this.dimension}`);
+    }
+
+    // Process in batches to avoid blocking the event loop
+    const entries = Array.from(this.embeddings.entries());
+    const batchSize = 1000;
+    const results: SimilarityResult[] = [];
+
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batch = entries.slice(i, i + batchSize);
+      for (const [id, embedding] of batch) {
+        const score = this.cosineSimilarity(vector, embedding);
+        results.push({ id, score });
+      }
+      // Yield to event loop between batches
+      if (i + batchSize < entries.length) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, topK);
+  }
+
+  /**
+   * Build an index from entities using an embedding function (async batch version).
+   * @param entities - Array of entity identifiers
+   * @param embedFn - Function to generate embeddings
+   */
+  async buildIndexAsync(entities: string[], embedFn: EmbedFn): Promise<void> {
+    const batchSize = 1000;
+    for (let i = 0; i < entities.length; i += batchSize) {
+      const batch = entities.slice(i, i + batchSize);
+      for (const entity of batch) {
+        const vector = embedFn(entity);
+        this.addEmbedding(entity, vector);
+      }
+      if (i + batchSize < entities.length) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+  }
+
+  /**
+   * Build an index from entities using an embedding function (synchronous).
    * @param entities - Array of entity identifiers
    * @param embedFn - Function to generate embeddings
    */
@@ -185,7 +236,44 @@ export class EmbeddingIndex {
   }
 
   /**
+   * Save the embedding index to a JSON-serializable object.
+   * @returns Object containing dimension and embeddings data
+   */
+  save(): { dimension: number; embeddings: Record<string, number[]> } {
+    const data: Record<string, number[]> = {};
+    for (const [id, vector] of this.embeddings) {
+      data[id] = vector;
+    }
+    return { dimension: this.dimension, embeddings: data };
+  }
+
+  /**
+   * Load the embedding index from a previously saved object.
+   * @param data - Object containing dimension and embeddings data
+   * @throws {Error} If data format is invalid or dimension mismatch
+   */
+  load(data: { dimension: number; embeddings: Record<string, number[]> }): void {
+    if (!data || typeof data.dimension !== 'number') {
+      throw new Error('Invalid embedding index data: missing dimension');
+    }
+    if (data.dimension !== this.dimension) {
+      throw new Error(`Dimension mismatch: expected ${this.dimension}, got ${data.dimension}`);
+    }
+    if (!data.embeddings || typeof data.embeddings !== 'object') {
+      throw new Error('Invalid embedding index data: missing embeddings');
+    }
+
+    this.embeddings.clear();
+    for (const [id, vector] of Object.entries(data.embeddings)) {
+      if (Array.isArray(vector) && vector.length === this.dimension) {
+        this.embeddings.set(id, vector);
+      }
+    }
+  }
+
+  /**
    * Compute cosine similarity between two vectors.
+   * Vectors are normalized before computing similarity for numerical stability.
    */
   private cosineSimilarity(a: number[], b: number[]): number {
     let dotProduct = 0;
@@ -198,9 +286,14 @@ export class EmbeddingIndex {
       normB += b[i] * b[i];
     }
 
-    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-    if (denominator === 0) return 0;
-    return dotProduct / denominator;
+    normA = Math.sqrt(normA);
+    normB = Math.sqrt(normB);
+
+    if (normA === 0 || normB === 0) return 0;
+
+    // Normalize vectors before computing cosine similarity
+    const normalizedDot = dotProduct / (normA * normB);
+    return normalizedDot;
   }
 
   /**

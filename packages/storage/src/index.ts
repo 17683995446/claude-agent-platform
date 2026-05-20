@@ -7,6 +7,7 @@ export type {
   StorageEntry,
   StorageStats,
   StorageChangeEvent,
+  Unsubscribe,
 } from './storage-interface.ts';
 export { NamespacedStorage } from './storage-interface.ts';
 
@@ -35,6 +36,7 @@ export type {
   BatchResult,
   TransactionResult,
   BatchProgress,
+  BatchProcessorOptions,
 } from './batch-operations.ts';
 export { BatchProcessor } from './batch-operations.ts';
 

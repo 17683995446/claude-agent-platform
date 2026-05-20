@@ -47,6 +47,11 @@ export interface StorageChangeEvent<T> {
 }
 
 /**
+ * 变更订阅取消函数
+ */
+export type Unsubscribe = () => void;
+
+/**
  * 统一存储接口 - 泛型接口定义所有存储后端的通用操作
  */
 export interface IStorage<T> {
@@ -70,6 +75,12 @@ export interface IStorage<T> {
   stats(): Promise<StorageStats>;
   /** 获取完整存储条目（包含元信息） */
   getEntry(key: string): Promise<StorageEntry<T> | undefined>;
+  /** 重命名键（将 oldKey 的值移动到 newKey） */
+  rename(oldKey: string, newKey: string): Promise<boolean>;
+  /** 复制键（将 sourceKey 的值复制到 targetKey） */
+  copy(sourceKey: string, targetKey: string): Promise<boolean>;
+  /** 订阅存储变更事件，返回取消订阅函数 */
+  subscribe?(listener: (event: StorageChangeEvent<T>) => void): Unsubscribe;
 }
 
 /**
@@ -133,5 +144,13 @@ export class NamespacedStorage<T> implements IStorage<T> {
 
   async getEntry(key: string): Promise<StorageEntry<T> | undefined> {
     return this.storage.getEntry(this.withPrefix(key));
+  }
+
+  async rename(oldKey: string, newKey: string): Promise<boolean> {
+    return this.storage.rename(this.withPrefix(oldKey), this.withPrefix(newKey));
+  }
+
+  async copy(sourceKey: string, targetKey: string): Promise<boolean> {
+    return this.storage.copy(this.withPrefix(sourceKey), this.withPrefix(targetKey));
   }
 }

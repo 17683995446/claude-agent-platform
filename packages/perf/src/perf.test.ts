@@ -704,9 +704,8 @@ describe('MemoryMonitor', () => {
     monitor.takeSnapshot();
     monitor.clear();
 
-    // getStats() calls takeSnapshot internally, so check sampleCount
-    // which is reset by clear()
-    expect(monitor.getStats().sampleCount).toBe(1); // 1 from getStats calling takeSnapshot
+    // After clear, getStats should not create a new snapshot
+    expect(monitor.getStats().sampleCount).toBe(0);
     monitor.dispose();
   });
 });

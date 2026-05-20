@@ -36,6 +36,8 @@ export interface StorageMetricsReport {
   totalKeys: number;
   uptime: number;
   timestamp: number;
+  /** 指标收集自身开销（微秒） */
+  metricsOverheadUs: number;
 }
 
 /**
@@ -56,11 +58,14 @@ export class StorageMetrics {
   private startTime = Date.now();
   private windowStart = Date.now();
   private windowOps = 0;
+  private _metricsOverheadUs = 0;
 
   /**
    * 记录一次操作
    */
   recordOperation(operation: string, duration: number, success: boolean): void {
+    const recordStart = performance.now();
+
     // 延迟记录
     if (!this.operationTimings.has(operation)) {
       this.operationTimings.set(operation, []);
@@ -85,6 +90,8 @@ export class StorageMetrics {
 
     // 吞吐量窗口
     this.windowOps++;
+
+    this._metricsOverheadUs += performance.now() - recordStart;
   }
 
   /**
@@ -172,6 +179,7 @@ export class StorageMetrics {
       totalKeys: 0,
       uptime: (now - this.startTime) / 1000,
       timestamp: now,
+      metricsOverheadUs: this._metricsOverheadUs * 1000,
     };
   }
 
@@ -231,5 +239,6 @@ export class StorageMetrics {
     this.startTime = Date.now();
     this.windowStart = Date.now();
     this.windowOps = 0;
+    this._metricsOverheadUs = 0;
   }
 }

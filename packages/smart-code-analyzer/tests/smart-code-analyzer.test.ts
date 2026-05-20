@@ -557,9 +557,9 @@ describe("DependencyGraph", () => {
       expect(order.flat).toContain("a");
       expect(order.flat).toContain("b");
       expect(order.flat).toContain("c");
-      // a should come before b, b before c
-      expect(order.flat.indexOf("a")).toBeLessThan(order.flat.indexOf("b"));
-      expect(order.flat.indexOf("b")).toBeLessThan(order.flat.indexOf("c"));
+      // Dependencies should come before dependents: c before b before a
+      expect(order.flat.indexOf("c")).toBeLessThan(order.flat.indexOf("b"));
+      expect(order.flat.indexOf("b")).toBeLessThan(order.flat.indexOf("a"));
     });
 
     it("should throw for cyclic graph", () => {

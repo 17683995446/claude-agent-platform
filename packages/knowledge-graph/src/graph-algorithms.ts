@@ -48,9 +48,19 @@ export interface CommunityResult {
  */
 export class GraphAlgorithms {
   private store: GraphStore;
+  private directed: boolean;
 
-  constructor(store: GraphStore) {
+  constructor(store: GraphStore, directed: boolean = true) {
     this.store = store;
+    this.directed = directed;
+  }
+
+  /**
+   * Get the effective direction for traversal based on the directed setting.
+   */
+  private effectiveDirection(requestedDir: 'out' | 'in' | 'both'): 'out' | 'in' | 'both' {
+    if (this.directed) return requestedDir;
+    return 'both';
   }
 
   /**
@@ -74,7 +84,7 @@ export class GraphAlgorithms {
       const result = visitFn(current.nodeId, current.depth);
       if (result === false) break;
 
-      const neighbors = this.store.getNeighbors(current.nodeId, 'out');
+      const neighbors = this.store.getNeighbors(current.nodeId, this.effectiveDirection('out'));
       for (const neighbor of neighbors) {
         if (!seen.has(neighbor.id)) {
           seen.add(neighbor.id);
@@ -105,7 +115,7 @@ export class GraphAlgorithms {
       const result = visitFn(nodeId, depth);
       if (result === false) return false;
 
-      const neighbors = this.store.getNeighbors(nodeId, 'out');
+      const neighbors = this.store.getNeighbors(nodeId, this.effectiveDirection('out'));
       for (const neighbor of neighbors) {
         if (!seen.has(neighbor.id)) {
           if (!dfsRecursive(neighbor.id, depth + 1)) return false;
@@ -119,7 +129,7 @@ export class GraphAlgorithms {
   }
 
   /**
-   * Dijkstra's shortest path algorithm.
+   * Dijkstra's shortest path algorithm with binary heap priority queue.
    * @param start - Starting node ID
    * @param end - Target node ID
    * @param weightFn - Function returning edge weight between two nodes
@@ -131,40 +141,100 @@ export class GraphAlgorithms {
 
     const distances = new Map<string, number>();
     const previous = new Map<string, string>();
-    const unvisited = new Set<string>();
+    const visited = new Set<string>();
 
+    // Binary min-heap priority queue
+    const heap: Array<{ nodeId: string; dist: number }> = [];
+    const heapIndex = new Map<string, number>();
+
+    const heapPush = (nodeId: string, dist: number) => {
+      heap.push({ nodeId, dist });
+      heapIndex.set(nodeId, heap.length - 1);
+      heapSiftUp(heap.length - 1);
+    };
+
+    const heapSiftUp = (i: number) => {
+      while (i > 0) {
+        const parent = Math.floor((i - 1) / 2);
+        if (heap[parent].dist <= heap[i].dist) break;
+        [heap[parent], heap[i]] = [heap[i], heap[parent]];
+        heapIndex.set(heap[parent].nodeId, parent);
+        heapIndex.set(heap[i].nodeId, i);
+        i = parent;
+      }
+    };
+
+    const heapSiftDown = (i: number) => {
+      const n = heap.length;
+      while (true) {
+        let smallest = i;
+        const left = 2 * i + 1;
+        const right = 2 * i + 2;
+        if (left < n && heap[left].dist < heap[smallest].dist) smallest = left;
+        if (right < n && heap[right].dist < heap[smallest].dist) smallest = right;
+        if (smallest === i) break;
+        [heap[smallest], heap[i]] = [heap[i], heap[smallest]];
+        heapIndex.set(heap[smallest].nodeId, smallest);
+        heapIndex.set(heap[i].nodeId, i);
+        i = smallest;
+      }
+    };
+
+    const heapPop = (): { nodeId: string; dist: number } | null => {
+      if (heap.length === 0) return null;
+      const top = heap[0];
+      const last = heap.pop()!;
+      if (heap.length > 0) {
+        heap[0] = last;
+        heapIndex.set(last.nodeId, 0);
+        heapSiftDown(0);
+      }
+      heapIndex.delete(top.nodeId);
+      return top;
+    };
+
+    const heapDecreaseKey = (nodeId: string, newDist: number) => {
+      const idx = heapIndex.get(nodeId);
+      if (idx === undefined) return;
+      heap[idx].dist = newDist;
+      heapSiftUp(idx);
+    };
+
+    const heapHas = (nodeId: string): boolean => {
+      return heapIndex.has(nodeId);
+    };
+
+    // Initialize
     const allNodes = this.store.getAllNodes();
     for (const node of allNodes) {
       distances.set(node.id, Infinity);
-      unvisited.add(node.id);
     }
     distances.set(start, 0);
+    heapPush(start, 0);
 
-    while (unvisited.size > 0) {
-      // Find unvisited node with minimum distance
-      let current: string | null = null;
-      let minDist = Infinity;
-      for (const nodeId of unvisited) {
-        const d = distances.get(nodeId)!;
-        if (d < minDist) {
-          minDist = d;
-          current = nodeId;
-        }
-      }
+    while (heap.length > 0) {
+      const current = heapPop();
+      if (!current) break;
+      const { nodeId: currentId, dist: currentDist } = current;
 
-      if (current === null || minDist === Infinity) break;
-      if (current === end) break;
+      if (visited.has(currentId)) continue;
+      visited.add(currentId);
 
-      unvisited.delete(current);
+      if (currentId === end) break;
 
-      const neighbors = this.store.getNeighbors(current, 'out');
+      const neighbors = this.store.getNeighbors(currentId, this.effectiveDirection('out'));
       for (const neighbor of neighbors) {
-        if (!unvisited.has(neighbor.id)) continue;
-        const weight = weightFn(current, neighbor.id);
-        const alt = distances.get(current)! + weight;
+        if (visited.has(neighbor.id)) continue;
+        const weight = weightFn(currentId, neighbor.id);
+        const alt = currentDist + weight;
         if (alt < distances.get(neighbor.id)!) {
           distances.set(neighbor.id, alt);
-          previous.set(neighbor.id, current);
+          previous.set(neighbor.id, currentId);
+          if (heapHas(neighbor.id)) {
+            heapDecreaseKey(neighbor.id, alt);
+          } else {
+            heapPush(neighbor.id, alt);
+          }
         }
       }
     }
@@ -205,7 +275,7 @@ export class GraphAlgorithms {
       // Calculate dangling node rank (nodes with zero out-degree)
       let danglingSum = 0;
       for (const node of nodes) {
-        const outDegree = this.store.getNeighbors(node.id, 'out').length;
+        const outDegree = this.store.getNeighborCount(node.id, 'out');
         if (outDegree === 0) {
           danglingSum += scores.get(node.id)!;
         }
@@ -214,11 +284,11 @@ export class GraphAlgorithms {
       for (const node of nodes) {
         // Base rank + dangling node redistribution
         let rank = (1 - damping) / n + damping * (danglingSum / n);
-        const neighbors = this.store.getNeighbors(node.id, 'in');
-        for (const neighbor of neighbors) {
-          const outDegree = this.store.getNeighbors(neighbor.id, 'out').length;
+        const inNeighbors = this.store.getNeighborsWithMultiplicity(node.id, 'in');
+        for (const { nodeId: neighbor, count } of inNeighbors) {
+          const outDegree = this.store.getNeighborCount(neighbor, 'out');
           if (outDegree > 0) {
-            rank += damping * (scores.get(neighbor.id)! / outDegree);
+            rank += damping * (scores.get(neighbor)! / outDegree) * count;
           }
         }
         newScores.set(node.id, rank);
@@ -290,7 +360,7 @@ export class GraphAlgorithms {
         const current = queue.shift()!;
         component.push(current);
 
-        const neighbors = this.store.getNeighbors(current, 'both');
+        const neighbors = this.store.getNeighbors(current, this.effectiveDirection('both'));
         for (const neighbor of neighbors) {
           if (!visited.has(neighbor.id)) {
             visited.add(neighbor.id);
@@ -323,7 +393,7 @@ export class GraphAlgorithms {
       let minEdge: { from: string; to: string; weight: number } | null = null;
 
       for (const nodeId of inMST) {
-        const neighbors = this.store.getNeighbors(nodeId, 'both');
+        const neighbors = this.store.getNeighbors(nodeId, this.effectiveDirection('both'));
         for (const neighbor of neighbors) {
           if (inMST.has(neighbor.id)) continue;
           const weight = weightFn ? weightFn(nodeId, neighbor.id) : 1;
@@ -360,7 +430,7 @@ export class GraphAlgorithms {
       const shuffled = [...nodes].sort(() => Math.random() - 0.5);
 
       for (const node of shuffled) {
-        const neighbors = this.store.getNeighbors(node.id, 'both');
+        const neighbors = this.store.getNeighbors(node.id, this.effectiveDirection('both'));
         if (neighbors.length === 0) continue;
 
         // Count neighbor labels
@@ -408,7 +478,7 @@ export class GraphAlgorithms {
     const maxPossible = nodes.length - 1;
 
     for (const node of nodes) {
-      const degree = this.store.getNeighbors(node.id, 'both').length;
+      const degree = this.store.getNeighbors(node.id, this.effectiveDirection('both')).length;
       scores.set(node.id, maxPossible > 0 ? degree / maxPossible : 0);
     }
 
@@ -416,7 +486,7 @@ export class GraphAlgorithms {
   }
 
   /**
-   * Betweenness centrality for all nodes.
+   * Betweenness centrality for all nodes using Brandes' algorithm.
    */
   private betweennessCentrality(): CentralityResult {
     const scores = new Map<string, number>();
@@ -426,21 +496,56 @@ export class GraphAlgorithms {
       scores.set(node.id, 0);
     }
 
+    // Brandes' algorithm: for each source, do BFS and accumulate dependencies
     for (const source of nodes) {
-      for (const target of nodes) {
-        if (source.id === target.id) continue;
+      // BFS from source
+      const stack: string[] = [];
+      const dist = new Map<string, number>();
+      const sigma = new Map<string, number>(); // number of shortest paths
+      const pred = new Map<string, string[]>(); // predecessors on shortest paths
 
-        // BFS to find shortest paths
-        const paths = this.findAllShortestPaths(source.id, target.id);
-        const totalPaths = paths.length;
+      for (const node of nodes) {
+        dist.set(node.id, -1);
+        sigma.set(node.id, 0);
+        pred.set(node.id, []);
+      }
+      dist.set(source.id, 0);
+      sigma.set(source.id, 1);
 
-        if (totalPaths === 0) continue;
+      const queue = [source.id];
+      while (queue.length > 0) {
+        const v = queue.shift()!;
+        stack.push(v);
 
-        for (const path of paths) {
-          for (const nodeId of path) {
-            if (nodeId === source.id || nodeId === target.id) continue;
-            scores.set(nodeId, scores.get(nodeId)! + 1 / totalPaths);
+        const neighbors = this.store.getNeighbors(v, 'out');
+        for (const neighbor of neighbors) {
+          const w = neighbor.id;
+          // First visit to w?
+          if (dist.get(w)! === -1) {
+            dist.set(w, dist.get(v)! + 1);
+            queue.push(w);
           }
+          // Shortest path via v?
+          if (dist.get(w)! === dist.get(v)! + 1) {
+            sigma.set(w, sigma.get(w)! + sigma.get(v)!);
+            pred.get(w)!.push(v);
+          }
+        }
+      }
+
+      // Back-propagation of dependencies
+      const delta = new Map<string, number>();
+      for (const node of nodes) {
+        delta.set(node.id, 0);
+      }
+
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        for (const v of pred.get(w)!) {
+          delta.set(v, delta.get(v)! + (sigma.get(v)! / sigma.get(w)!) * (1 + delta.get(w)!));
+        }
+        if (w !== source.id) {
+          scores.set(w, scores.get(w)! + delta.get(w)!);
         }
       }
     }
@@ -476,7 +581,7 @@ export class GraphAlgorithms {
       }
 
       const closeness = reachable > 0 && totalDist > 0 ? (reachable / (n - 1)) * (1 / (totalDist / reachable)) : 0;
-      scores.set(node.id, closeness);
+      scores.set(node.id, n > 1 ? closeness : 0);
     }
 
     return { scores };
@@ -533,7 +638,7 @@ export class GraphAlgorithms {
       const current = queue.shift()!;
       const currentDist = distances.get(current)!;
 
-      const neighbors = this.store.getNeighbors(current, 'both');
+      const neighbors = this.store.getNeighbors(current, this.effectiveDirection('both'));
       for (const neighbor of neighbors) {
         if (!distances.has(neighbor.id)) {
           distances.set(neighbor.id, currentDist + 1);

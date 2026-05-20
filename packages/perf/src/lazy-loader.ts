@@ -20,6 +20,8 @@ export interface LazyLoaderOptions<T> {
   onLoad?: (value: T) => void;
   /** 加载失败回调 */
   onError?: (error: Error) => void;
+  /** 缓存 TTL（ms），0 表示永不过期 */
+  ttl?: number;
 }
 
 export type LazyState = 'pending' | 'loading' | 'loaded' | 'error';
@@ -48,6 +50,7 @@ export class LazyLoader<T> {
     accessCount: 0,
     lastAccessTime: 0,
   };
+  private loadedAt: number = 0;
 
   constructor(options: LazyLoaderOptions<T>) {
     this.options = {
@@ -59,6 +62,7 @@ export class LazyLoader<T> {
       autoLoad: options.autoLoad ?? false,
       onLoad: options.onLoad,
       onError: options.onError,
+      ttl: options.ttl ?? 0,
     };
   }
 
@@ -68,15 +72,18 @@ export class LazyLoader<T> {
     this.stats.lastAccessTime = Date.now();
 
     if (this.state === 'loaded' && this.value !== undefined) {
-      return this.value;
+      // Check TTL
+      if (this.options.ttl > 0 && Date.now() - this.loadedAt > this.options.ttl) {
+        // TTL expired, reset and reload
+        this.reset();
+      } else {
+        return this.value;
+      }
     }
 
-    if (this.state === 'error' && this.options.fallback !== undefined) {
-      const fallback =
-        typeof this.options.fallback === 'function'
-          ? (this.options.fallback as () => T)()
-          : this.options.fallback;
-      return fallback;
+    if (this.state === 'error') {
+      // Try to reload on error state
+      return this.load();
     }
 
     return this.load();
@@ -115,6 +122,7 @@ export class LazyLoader<T> {
       const result = await this.loadPromise;
       this.value = result;
       this.state = 'loaded';
+      this.loadedAt = Date.now();
       this.stats.loadTime = Date.now() - startTime;
       this.options.onLoad?.(result);
       return result;
@@ -180,6 +188,11 @@ export class LazyLoader<T> {
         // Silently ignore preload errors
       });
     }
+  }
+
+  /** 预取（返回 Promise，可用于等待加载完成） */
+  async prefetch(): Promise<T> {
+    return this.load();
   }
 
   private async loadWithRetry(): Promise<T> {

@@ -66,6 +66,30 @@ export class OntologyManager {
   private classes: Map<string, ClassDefinition> = new Map();
   private properties: Map<string, PropertyDefinition> = new Map();
   private relations: Map<string, RelationDefinition> = new Map();
+  private version: number = 1;
+  private versionHistory: Array<{ version: number; timestamp: number; description: string }> = [];
+
+  /**
+   * Get the current ontology version.
+   */
+  getVersion(): number {
+    return this.version;
+  }
+
+  /**
+   * Get the version history.
+   */
+  getVersionHistory(): Array<{ version: number; timestamp: number; description: string }> {
+    return [...this.versionHistory];
+  }
+
+  /**
+   * Increment the version with a description of the change.
+   */
+  private bumpVersion(description: string): void {
+    this.versionHistory.push({ version: this.version, timestamp: Date.now(), description });
+    this.version++;
+  }
 
   /**
    * Define a class in the ontology.
@@ -76,6 +100,23 @@ export class OntologyManager {
   defineClass(name: string, superClass?: string, properties?: Map<string, PropertyConstraints>): void {
     if (superClass && !this.classes.has(superClass)) {
       throw new Error(`Super class '${superClass}' does not exist`);
+    }
+
+    // Check for circular inheritance
+    if (superClass) {
+      let current: string | undefined = superClass;
+      const visited = new Set<string>();
+      while (current) {
+        if (current === name) {
+          throw new Error(`Circular inheritance detected: '${name}' cannot be a superclass of itself`);
+        }
+        if (visited.has(current)) {
+          throw new Error(`Circular inheritance detected involving '${current}'`);
+        }
+        visited.add(current);
+        const classDef = this.classes.get(current);
+        current = classDef?.superClass;
+      }
     }
 
     const classDef: ClassDefinition = {
@@ -90,6 +131,8 @@ export class OntologyManager {
     if (superClass) {
       this.classes.get(superClass)!.subClasses.add(name);
     }
+
+    this.bumpVersion(`Defined class '${name}'`);
   }
 
   /**
@@ -105,6 +148,7 @@ export class OntologyManager {
     }
 
     this.properties.set(name, { name, domain, range, constraints });
+    this.bumpVersion(`Defined property '${name}'`);
   }
 
   /**
@@ -122,6 +166,7 @@ export class OntologyManager {
     }
 
     this.relations.set(name, { name, domain, range });
+    this.bumpVersion(`Defined relation '${name}'`);
   }
 
   /**
@@ -305,6 +350,8 @@ export class OntologyManager {
         this.relations.set(name, { ...relDef });
       }
     }
+
+    this.bumpVersion('Merged ontology');
 
     return conflicts;
   }

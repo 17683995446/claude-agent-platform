@@ -68,7 +68,10 @@ export class TemporalGraph {
 
     this.currentTime = Math.max(this.currentTime, time);
 
-    if (this.store.hasNode(id)) {
+    const isUpdate = this.store.hasNode(id);
+    const changeType = isUpdate ? 'property_changed' : 'node_added';
+
+    if (isUpdate) {
       // Update existing node
       const existing = this.store.getNode(id)!;
       this.store.removeNode(id);
@@ -79,7 +82,7 @@ export class TemporalGraph {
       this.recordChange('node_added', time, id, { labels, properties: props });
     }
 
-    this.addTimelineEntry(id, time, 'node_added', { labels, properties: props });
+    this.addTimelineEntry(id, time, changeType, { labels, properties: props });
   }
 
   /**
@@ -148,9 +151,25 @@ export class TemporalGraph {
           tempStore.removeEdge(change.targetId);
           activeEdgeIds.delete(change.targetId);
           break;
-        case 'property_changed':
-          // Properties are already captured in node_added
+        case 'property_changed': {
+          const details = change.details as { labels?: string[]; properties: Record<string, unknown> };
+          if (activeNodeIds.has(change.targetId)) {
+            const existingNode = tempStore.getNode(change.targetId);
+            if (existingNode) {
+              // Remove and re-add with updated properties
+              const currentLabels = details.labels || existingNode.labels;
+              const mergedProps = { ...existingNode.properties, ...details.properties };
+              tempStore.removeNode(change.targetId);
+              try {
+                tempStore.addNode(change.targetId, currentLabels, mergedProps);
+                activeNodeIds.add(change.targetId);
+              } catch {
+                // Node already exists in temp store
+              }
+            }
+          }
           break;
+        }
       }
     }
 
@@ -169,6 +188,24 @@ export class TemporalGraph {
    */
   getChanges(since: number, until: number): TemporalChange[] {
     return this.changes.filter(c => c.time >= since && c.time <= until);
+  }
+
+  /**
+   * Get the graph state for a time range, returning snapshots at each distinct time.
+   * @param since - Start time (inclusive)
+   * @param until - End time (inclusive)
+   * @returns Array of graph states at each distinct time in the range
+   */
+  getStatesInRange(since: number, until: number): GraphState[] {
+    const times = new Set<number>();
+    for (const change of this.changes) {
+      if (change.time >= since && change.time <= until) {
+        times.add(change.time);
+      }
+    }
+
+    const sortedTimes = Array.from(times).sort((a, b) => a - b);
+    return sortedTimes.map(time => this.getStateAt(time));
   }
 
   /**
@@ -242,6 +279,22 @@ export class TemporalGraph {
         case 'edge_removed':
           this.store.removeEdge(change.targetId);
           break;
+        case 'property_changed': {
+          const details = change.details as { labels?: string[]; properties: Record<string, unknown> };
+          const existingNode = this.store.getNode(change.targetId);
+          if (existingNode) {
+            const currentLabels = details.labels || existingNode.labels;
+            const mergedProps = { ...existingNode.properties, ...details.properties };
+            this.store.removeNode(change.targetId);
+            try {
+              this.store.addNode(change.targetId, currentLabels, mergedProps);
+            } catch {
+              // Already exists
+            }
+          }
+          this.addTimelineEntry(change.targetId, change.time, change.type, change.details);
+          break;
+        }
       }
     }
 
@@ -270,6 +323,65 @@ export class TemporalGraph {
    */
   getAllChanges(): TemporalChange[] {
     return [...this.changes];
+  }
+
+  /**
+   * Compress temporal data by merging consecutive identical property changes.
+   * Only keeps the latest property change for each target within consecutive same-type changes.
+   * @returns Number of changes removed
+   */
+  compressChanges(): number {
+    if (this.changes.length <= 1) return 0;
+
+    const compressed: TemporalChange[] = [];
+    let removed = 0;
+
+    for (let i = 0; i < this.changes.length; i++) {
+      const current = this.changes[i];
+      const prev = compressed.length > 0 ? compressed[compressed.length - 1] : null;
+
+      // Merge consecutive property_changed events for the same target
+      if (
+        prev &&
+        current.type === 'property_changed' &&
+        prev.type === 'property_changed' &&
+        current.targetId === prev.targetId
+      ) {
+        // Merge: keep the later change (which has more up-to-date properties)
+        compressed[compressed.length - 1] = current;
+        removed++;
+      } else if (
+        prev &&
+        current.type === 'property_changed' &&
+        prev.type === 'node_added' &&
+        current.targetId === prev.targetId
+      ) {
+        // node_added followed by property_changed for same target:
+        // Update the node_added with the new properties and count as merged,
+        // but still keep the property_changed as a separate event
+        prev.details = {
+          ...prev.details,
+          properties: { ...(prev.details.properties as Record<string, unknown>), ...(current.details.properties as Record<string, unknown>) },
+        };
+        prev.time = current.time;
+        removed++;
+        compressed.push(current);
+      } else {
+        compressed.push(current);
+      }
+    }
+
+    this.changes = compressed;
+
+    // Rebuild node timelines
+    this.nodeTimelines.clear();
+    for (const change of this.changes) {
+      if (change.type === 'node_added' || change.type === 'property_changed') {
+        this.addTimelineEntry(change.targetId, change.time, change.type, change.details);
+      }
+    }
+
+    return removed;
   }
 
   /**

@@ -62,6 +62,10 @@ export interface FixOptions {
   dryRun?: boolean;
   /** Custom configuration key-value pairs */
   config?: Record<string, unknown>;
+  /** Strategy selection mode: 'all', 'safe-only', 'high-confidence' */
+  strategySelection?: 'all' | 'safe-only' | 'high-confidence';
+  /** Minimum confidence threshold for strategy selection (0-1) */
+  minConfidence?: number;
 }
 
 /** Result of applying a fix strategy */
@@ -114,6 +118,31 @@ export abstract class FixStrategyBase {
    * @returns A FixResult describing the changes made
    */
   abstract execute(context: FixContext): FixResult | Promise<FixResult>;
+
+  /**
+   * Execute the fix with rollback support. If validation fails, returns the original code.
+   * @param context - The fix context containing code and diagnostics
+   * @param validate - Optional validation function. If it returns false, the fix is rolled back.
+   * @returns A FixResult, potentially rolled back to original code
+   */
+  async executeWithRollback(context: FixContext, validate?: (result: FixResult) => boolean): Promise<FixResult> {
+    const originalCode = context.code;
+    const result = await this.execute(context);
+
+    if (validate && !validate(result)) {
+      // Rollback: return original code unchanged
+      return {
+        fixed: false,
+        code: originalCode,
+        changes: [],
+        confidence: 0,
+        strategyName: this.name,
+        error: 'Fix rolled back due to failed validation',
+      };
+    }
+
+    return result;
+  }
 
   /**
    * Check whether this strategy can handle a given diagnostic.
@@ -215,11 +244,20 @@ export class StrategyRegistry {
 
   /**
    * Find strategies that can handle a specific diagnostic.
+   * Results are sorted by confidence (highest first).
    * @param diagnostic - The diagnostic to match
-   * @returns Array of strategies that claim to handle the diagnostic
+   * @returns Array of strategies that claim to handle the diagnostic, sorted by confidence
    */
   findStrategiesForDiagnostic(diagnostic: Diagnostic): FixStrategyBase[] {
-    return this.getAll().filter((s) => s.canFix(diagnostic));
+    const context: FixContext = {
+      filePath: '',
+      code: '',
+      diagnostics: [diagnostic],
+      options: {},
+    };
+    return this.getAll()
+      .filter((s) => s.canFix(diagnostic))
+      .sort((a, b) => b.estimateConfidence(context) - a.estimateConfidence(context));
   }
 
   /**

@@ -80,12 +80,12 @@ export class CompatibilityFix {
       }
     }
 
-    // Nullish coalescing (ES2020) -> logical OR
+    // Nullish coalescing (ES2020) -> conditional expression
     if (targetYear < 2020) {
-      const nullishPattern = /(\w+)\s*\?\?/g;
-      const newResult = result.replace(nullishPattern, (_match, varName) => {
+      const nullishPattern = /(\w+(?:\.\w+)*)\s*\?\?\s*([^;,\n)}\]]+)/g;
+      const newResult = result.replace(nullishPattern, (_match, varExpr, defaultVal) => {
         modified = true;
-        return `(${varName} != null ? ${varName} :`;
+        return `(${varExpr} != null ? ${varExpr} : ${defaultVal.trim()})`;
       });
       if (newResult !== result) {
         result = newResult;
@@ -104,7 +104,7 @@ export class CompatibilityFix {
       const spreadPattern = /\{\s*\.\.\.(\w+)/g;
       const newResult = result.replace(spreadPattern, (_match, obj) => {
         modified = true;
-        return `Object.assign({}, ${obj}`;
+        return `Object.assign({}, ${obj})`;
       });
       if (newResult !== result) {
         result = newResult;
@@ -161,10 +161,19 @@ export class CompatibilityFix {
       const fsPromisesPattern = /import\s+\{([^}]+)\}\s+from\s+['"]fs\/promises['"]/;
       const match = result.match(fsPromisesPattern);
       if (match) {
-        const apis = match[1];
+        const apis = match[1].trim();
+        const apiList = apis.split(',').map(a => a.trim());
+        // Generate promisified wrappers for known fs APIs, with fallback for unknown ones
+        const knownFsApis = ['readFile', 'writeFile', 'appendFile', 'copyFile', 'unlink', 'readdir', 'stat', 'mkdir', 'rmdir', 'rename', 'access', 'chmod', 'chown'];
+        const wrappers = apiList.map(api => {
+          if (knownFsApis.includes(api)) {
+            return `${api}: promisify(fs.${api})`;
+          }
+          return `${api}: promisify(fs.${api} || function() {})`;
+        }).join(', ');
         result = result.replace(
           fsPromisesPattern,
-          `import fs from 'fs';\nimport { promisify } from 'util';\nconst { ${apis} } = { readFile: promisify(fs.readFile), writeFile: promisify(fs.writeFile) };`,
+          `import fs from 'fs';\nimport { promisify } from 'util';\nconst { ${apis} } = { ${wrappers} };`,
         );
         modified = true;
         changes.push({
@@ -192,10 +201,10 @@ export class CompatibilityFix {
 
     // structuredClone (Node 17+) -> JSON.parse(JSON.stringify())
     if (majorVersion < 17 && result.includes('structuredClone')) {
-      result = result.replace(
-        /structuredClone\(([^)]+)\)/g,
-        'JSON.parse(JSON.stringify($1))',
-      );
+      // Use balanced paren matching to handle nested parentheses
+      result = this.replaceBalancedCall(result, 'structuredClone', (args) => {
+        return `JSON.parse(JSON.stringify(${args}))`;
+      });
       modified = true;
       changes.push({
         description: 'Replaced structuredClone with JSON serialization for older Node.js',
@@ -259,11 +268,11 @@ export class CompatibilityFix {
         });
       }
 
-      // Replace Object.fromEntries() with reduce
+      // Replace Object.fromEntries() with reduce (ES2015-compatible, no spread)
       if (result.includes('Object.fromEntries')) {
         result = result.replace(
           /Object\.fromEntries\(([^)]+)\)/g,
-          '$1.reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {})',
+          '$1.reduce(function(obj, entry) { obj[entry[0]] = entry[1]; return obj; }, {})',
         );
         modified = true;
         changes.push({
@@ -302,27 +311,58 @@ export class CompatibilityFix {
    * Add polyfill imports for missing APIs in the target environment.
    * @param code - The source code
    * @param targetEnv - The target environment description
+   * @param polyfillStrategy - Optional polyfill strategy ('core-js', 'polyfill.io', 'manual'). Default: 'core-js'
    * @returns FixResult with polyfill imports added
    */
-  polyfillMissingAPIs(code: string, targetEnv: string): FixResult {
+  polyfillMissingAPIs(code: string, targetEnv: string, polyfillStrategy: string = 'core-js'): FixResult {
     const changes: CodeChange[] = [];
     const polyfills: string[] = [];
 
     // Detect APIs that might need polyfilling
     if (code.includes('Promise.allSettled') && targetEnv === 'node12') {
-      polyfills.push("import 'core-js/stable/promise/all-settled';");
+      if (polyfillStrategy === 'core-js') {
+        polyfills.push("import 'core-js/stable/promise/all-settled';");
+      } else if (polyfillStrategy === 'polyfill.io') {
+        polyfills.push("// Polyfill.io: Promise.allSettled - add <script src='https://polyfill.io/v3/polyfill.min.js?features=Promise.allSettled'> to HTML");
+      } else {
+        polyfills.push("// Manual polyfill needed for Promise.allSettled");
+      }
     }
     if (code.includes('Object.fromEntries') && (targetEnv === 'ie11' || targetEnv === 'node10')) {
-      polyfills.push("import 'core-js/stable/object/from-entries';");
+      if (polyfillStrategy === 'core-js') {
+        polyfills.push("import 'core-js/stable/object/from-entries';");
+      } else if (polyfillStrategy === 'polyfill.io') {
+        polyfills.push("// Polyfill.io: Object.fromEntries - add to polyfill.io features");
+      } else {
+        polyfills.push("// Manual polyfill needed for Object.fromEntries");
+      }
     }
     if (code.includes('Array.prototype.flatMap') && targetEnv === 'ie11') {
-      polyfills.push("import 'core-js/stable/array/flat-map';");
+      if (polyfillStrategy === 'core-js') {
+        polyfills.push("import 'core-js/stable/array/flat-map';");
+      } else if (polyfillStrategy === 'polyfill.io') {
+        polyfills.push("// Polyfill.io: Array.prototype.flatMap - add to polyfill.io features");
+      } else {
+        polyfills.push("// Manual polyfill needed for Array.prototype.flatMap");
+      }
     }
     if (code.includes('String.prototype.matchAll') && targetEnv === 'ie11') {
-      polyfills.push("import 'core-js/stable/string/match-all';");
+      if (polyfillStrategy === 'core-js') {
+        polyfills.push("import 'core-js/stable/string/match-all';");
+      } else if (polyfillStrategy === 'polyfill.io') {
+        polyfills.push("// Polyfill.io: String.prototype.matchAll - add to polyfill.io features");
+      } else {
+        polyfills.push("// Manual polyfill needed for String.prototype.matchAll");
+      }
     }
     if (code.includes('structuredClone') && (targetEnv === 'node14' || targetEnv === 'node16')) {
-      polyfills.push("import 'core-js/stable/structured-clone';");
+      if (polyfillStrategy === 'core-js') {
+        polyfills.push("import 'core-js/stable/structured-clone';");
+      } else if (polyfillStrategy === 'polyfill.io') {
+        polyfills.push("// Polyfill.io: structuredClone - add to polyfill.io features");
+      } else {
+        polyfills.push("// Manual polyfill needed for structuredClone");
+      }
     }
 
     if (polyfills.length === 0) {
@@ -357,6 +397,7 @@ export class CompatibilityFix {
 
   /**
    * Generate a compatibility report for the given code and targets.
+   * Includes migration suggestions for removed APIs.
    * @param code - The source code
    * @param targets - The target environments
    * @returns A detailed compatibility report
@@ -365,6 +406,22 @@ export class CompatibilityFix {
     const issues: CompatIssue[] = [];
     const polyfills: string[] = [];
     const lines = code.split('\n');
+
+    // Known removed/deprecated APIs with migration suggestions
+    const removedAPIs: Record<string, string> = {
+      'require.resolve': 'Use import.meta.resolve or createRequire',
+      'fs.exists': 'Use fs.stat or fs.access',
+      'fs.existsSync': 'Use fs.statSync or fs.accessSync',
+      'new Buffer': 'Use Buffer.alloc, Buffer.allocUnsafe, or Buffer.from',
+      'util.isArray': 'Use Array.isArray',
+      'util.isRegExp': 'Use instanceof RegExp',
+      'util.isDate': 'Use instanceof Date',
+      'util.isError': 'Use instanceof Error',
+      'util.isObject': 'Use typeof obj === "object" && obj !== null',
+      'path.exists': 'Use fs.stat or fs.access',
+      'zlib.inflateRawSync': 'Use zlib.inflateRaw (async) with callback',
+      'events.EventEmitter.prototype.listenerCount': 'Use EventEmitter.prototype.listenerCount (getter)',
+    };
 
     // Check ES version compatibility
     if (targets.esVersion) {
@@ -449,6 +506,55 @@ export class CompatibilityFix {
           suggestion: 'Use JSON.parse(JSON.stringify()) instead',
         });
       }
+
+      // Check for removed APIs
+      for (const [api, suggestion] of Object.entries(removedAPIs)) {
+        if (code.includes(api)) {
+          const apiLine = lines.findIndex((l) => l.includes(api));
+          issues.push({
+            description: `'${api}' has been removed or deprecated`,
+            api,
+            line: apiLine + 1,
+            severity: 'warning',
+            suggestion,
+          });
+        }
+      }
+    }
+
+    // Check browser compatibility
+    if (targets.browsers && targets.browsers.length > 0) {
+      const needsOldSupport = targets.browsers.some((b) => {
+        const match = b.match(/(\w+)\s*>=?\s*(\d+)/);
+        if (!match) return false;
+        const version = parseInt(match[2], 10);
+        if (match[1] === 'ie') return true;
+        if (match[1] === 'safari' && version < 14) return true;
+        if (match[1] === 'firefox' && version < 78) return true;
+        if (match[1] === 'chrome' && version < 80) return true;
+        return false;
+      });
+
+      if (needsOldSupport) {
+        if (code.includes('.at(')) {
+          issues.push({
+            description: 'Array.at() not supported in older browsers',
+            api: '.at()',
+            line: lines.findIndex((l) => l.includes('.at(')) + 1,
+            severity: 'error',
+            suggestion: 'Use bracket notation with length calculation',
+          });
+        }
+        if (code.includes('Object.fromEntries')) {
+          issues.push({
+            description: 'Object.fromEntries() not supported in older browsers',
+            api: 'Object.fromEntries',
+            line: lines.findIndex((l) => l.includes('Object.fromEntries')) + 1,
+            severity: 'error',
+            suggestion: 'Use Array.reduce() instead',
+          });
+        }
+      }
     }
 
     // Calculate compatibility score
@@ -462,5 +568,49 @@ export class CompatibilityFix {
       polyfills,
       score,
     };
+  }
+
+  /**
+   * Replace a function call using balanced parenthesis matching.
+   * Handles nested parentheses in arguments correctly.
+   * @param code - The source code
+   * @param funcName - The function name to find
+   * @param replacer - Function that takes the arguments string and returns the replacement
+   * @returns The code with the function call replaced
+   */
+  private replaceBalancedCall(
+    code: string,
+    funcName: string,
+    replacer: (args: string) => string,
+  ): string {
+    let result = '';
+    let i = 0;
+    const searchStr = funcName + '(';
+
+    while (i < code.length) {
+      const idx = code.indexOf(searchStr, i);
+      if (idx === -1) {
+        result += code.slice(i);
+        break;
+      }
+
+      result += code.slice(i, idx);
+
+      // Find the balanced closing paren
+      const startArgs = idx + searchStr.length;
+      let depth = 1;
+      let endArgs = startArgs;
+      while (endArgs < code.length && depth > 0) {
+        if (code[endArgs] === '(') depth++;
+        else if (code[endArgs] === ')') depth--;
+        if (depth > 0) endArgs++;
+      }
+
+      const args = code.slice(startArgs, endArgs);
+      result += replacer(args);
+      i = endArgs + 1; // skip the closing paren
+    }
+
+    return result;
   }
 }

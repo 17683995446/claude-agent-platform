@@ -71,6 +71,10 @@ export class MemoryStorage<T> implements IStorage<T> {
     };
   }
 
+  subscribe(listener: EventListener<T>): () => void {
+    return this.on(listener);
+  }
+
   private emit(event: StorageChangeEvent<T>): void {
     for (const listener of this.listeners) {
       try {
@@ -226,6 +230,7 @@ export class MemoryStorage<T> implements IStorage<T> {
       hitRate: total > 0 ? this._hits / total : 0,
       missRate: total > 0 ? this._misses / total : 0,
       evictionCount: this._evictionCount,
+      size: this.store.size,
     };
   }
 
@@ -238,6 +243,41 @@ export class MemoryStorage<T> implements IStorage<T> {
     }
     this.touchAccessOrder(key);
     return entry;
+  }
+
+  async rename(oldKey: string, newKey: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      const entry = this.store.get(oldKey);
+      if (!entry) return false;
+      if (this.isExpired(entry)) {
+        await this.delete(oldKey);
+        return false;
+      }
+      this.store.set(newKey, structuredClone(entry));
+      this.store.delete(oldKey);
+      // 更新 LRU 顺序
+      const oldIdx = this.accessOrder.indexOf(oldKey);
+      if (oldIdx !== -1) this.accessOrder.splice(oldIdx, 1);
+      this.touchAccessOrder(newKey);
+      this.emit({ type: 'set', key: newKey, entry, timestamp: Date.now() });
+      this.emit({ type: 'delete', key: oldKey, entry, timestamp: Date.now() });
+      return true;
+    });
+  }
+
+  async copy(sourceKey: string, targetKey: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      const entry = this.store.get(sourceKey);
+      if (!entry) return false;
+      if (this.isExpired(entry)) {
+        await this.delete(sourceKey);
+        return false;
+      }
+      this.store.set(targetKey, structuredClone(entry));
+      this.touchAccessOrder(targetKey);
+      this.emit({ type: 'set', key: targetKey, entry, timestamp: Date.now() });
+      return true;
+    });
   }
 
   // ---- 扩展功能 ----

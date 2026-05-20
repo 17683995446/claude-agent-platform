@@ -49,15 +49,35 @@ export class RefactoringEngine {
     const selectedLines = lines.slice(range.startLine - 1, range.endLine);
     const extractedCode = selectedLines.join('\n');
 
+    // Detect closure variables (variables used in extracted code but declared outside)
+    const outerCode = [...lines.slice(0, range.startLine - 1), ...lines.slice(range.endLine)].join('\n');
+    const closureVars: string[] = [];
+    // Find identifiers in extracted code that look like variable references
+    const identifierPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
+    const extractedIdents = new Set<string>();
+    let idMatch: RegExpExecArray | null;
+    while ((idMatch = identifierPattern.exec(extractedCode)) !== null) {
+      extractedIdents.add(idMatch[1]);
+    }
+    // Check which are declared in outer scope
+    for (const ident of extractedIdents) {
+      const declPattern = new RegExp(`(?:const|let|var|function)\\s+${ident}\\b`);
+      if (declPattern.test(outerCode) && !declPattern.test(extractedCode)) {
+        closureVars.push(ident);
+      }
+    }
+
     // Build the new method
     const indent = (lines[range.startLine - 1].match(/^(\s*)/) || [''])[1];
+    const params = closureVars.length > 0 ? closureVars.join(', ') : '';
     const newMethod =
-      `\n${indent}function ${name}() {\n` +
+      `\n${indent}function ${name}(${params}) {\n` +
       selectedLines.map((l) => indent + '  ' + l).join('\n') +
       `\n${indent}}\n`;
 
     // Replace the selected lines with a call to the new method
-    const callStatement = `${indent}${name}();`;
+    const callArgs = closureVars.length > 0 ? closureVars.join(', ') : '';
+    const callStatement = `${indent}${name}(${callArgs});`;
     const newLines = [
       ...lines.slice(0, range.startLine - 1),
       callStatement,
@@ -130,8 +150,8 @@ export class RefactoringEngine {
 
     // Replace first occurrence with the variable name
     const newCode = code.replace(expression, name);
-    // Insert the declaration before the line
-    const newLines = [...lines];
+    // Insert the declaration before the line that now contains the variable name
+    const newLines = newCode.split('\n');
     newLines.splice(targetLine, 0, declaration);
     const finalCode = newLines.join('\n');
 
@@ -198,11 +218,11 @@ export class RefactoringEngine {
     const newLines = lines.map((line, i) => {
       if (i < startLine || i >= endLine) return line;
 
-      // Use word boundary matching to avoid partial replacements
+      // Use word boundary matching, but skip strings and comments
       const regex = new RegExp(`\\b${oldName}\\b`, 'g');
-      if (regex.test(line)) {
+      if (regex.test(line) && this.replaceOutsideStringsAndComments(line, new RegExp(`\\b${oldName}\\b`, 'g'), newName) !== line) {
         modified = true;
-        return line.replace(new RegExp(`\\b${oldName}\\b`, 'g'), newName);
+        return this.replaceOutsideStringsAndComments(line, new RegExp(`\\b${oldName}\\b`, 'g'), newName);
       }
       return line;
     });
@@ -264,11 +284,11 @@ export class RefactoringEngine {
       };
     }
 
-    // Remove the declaration line and replace usages
+    // Remove the declaration line and replace usages (skip strings and comments)
     const newLines = lines.filter((_, i) => i !== declLine);
     const usageRegex = new RegExp(`\\b${varName}\\b`, 'g');
     const inlinedCode = newLines
-      .map((line) => line.replace(usageRegex, varValue))
+      .map((line) => this.replaceOutsideStringsAndComments(line, usageRegex, varValue))
       .join('\n');
 
     changes.push({
@@ -332,6 +352,36 @@ export class RefactoringEngine {
       confidence: 0.8,
       strategyName: 'refactoring-engine',
     };
+  }
+
+  /**
+   * Generate a diff preview of the changes that would be made.
+   * @param originalCode - The original code
+   * @param newCode - The modified code
+   * @returns A unified diff string showing the changes
+   */
+  generateDiff(originalCode: string, newCode: string): string {
+    const originalLines = originalCode.split('\n');
+    const newLines = newCode.split('\n');
+    const diff: string[] = [];
+
+    // Simple line-based diff
+    const maxLen = Math.max(originalLines.length, newLines.length);
+    for (let i = 0; i < maxLen; i++) {
+      const origLine = i < originalLines.length ? originalLines[i] : undefined;
+      const newLine = i < newLines.length ? newLines[i] : undefined;
+
+      if (origLine === undefined) {
+        diff.push(`+ ${newLine}`);
+      } else if (newLine === undefined) {
+        diff.push(`- ${origLine}`);
+      } else if (origLine !== newLine) {
+        diff.push(`- ${origLine}`);
+        diff.push(`+ ${newLine}`);
+      }
+    }
+
+    return diff.join('\n');
   }
 
   /**
@@ -429,5 +479,113 @@ export class RefactoringEngine {
       confidence: 0.75,
       strategyName: 'refactoring-engine',
     };
+  }
+
+  /**
+   * Replace regex matches in a line, skipping matches inside strings and comments.
+   * @param line - The source line
+   * @param regex - The regex to match (with global flag)
+   * @param replacement - The replacement string
+   * @returns The line with replacements applied only outside strings/comments
+   */
+  private replaceOutsideStringsAndComments(line: string, regex: RegExp, replacement: string): string {
+    const segments: { text: string; replaceable: boolean }[] = [];
+    let current = '';
+    let inString: string | null = null;
+    let inTemplate = false;
+    let inLineComment = false;
+    let inBlockComment = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const prev = i > 0 ? line[i - 1] : '';
+
+      if (inLineComment) {
+        current += char;
+        continue;
+      }
+
+      if (inBlockComment) {
+        current += char;
+        if (prev === '*' && char === '/') {
+          inBlockComment = false;
+          segments.push({ text: current, replaceable: false });
+          current = '';
+        }
+        continue;
+      }
+
+      if (inString) {
+        current += char;
+        if (char === '\\') {
+          // Next char is escaped, add it too
+          if (i + 1 < line.length) {
+            i++;
+            current += line[i];
+          }
+          continue;
+        }
+        if (char === inString) {
+          inString = null;
+          segments.push({ text: current, replaceable: false });
+          current = '';
+        }
+        continue;
+      }
+
+      if (inTemplate) {
+        current += char;
+        if (char === '`') {
+          inTemplate = false;
+          segments.push({ text: current, replaceable: false });
+          current = '';
+        }
+        continue;
+      }
+
+      // Check for comment start
+      if (prev === '/' && char === '/') {
+        // The '/' was already added to current, remove it
+        current = current.slice(0, -1);
+        if (current) segments.push({ text: current, replaceable: true });
+        current = '//' + char;
+        inLineComment = true;
+        continue;
+      }
+      if (prev === '/' && char === '*') {
+        current = current.slice(0, -1);
+        if (current) segments.push({ text: current, replaceable: true });
+        current = '/*' + char;
+        inBlockComment = true;
+        continue;
+      }
+
+      // Check for string start
+      if (char === "'" || char === '"') {
+        if (current) segments.push({ text: current, replaceable: true });
+        current = char;
+        inString = char;
+        continue;
+      }
+      if (char === '`') {
+        if (current) segments.push({ text: current, replaceable: true });
+        current = char;
+        inTemplate = true;
+        continue;
+      }
+
+      current += char;
+    }
+
+    if (current) {
+      segments.push({
+        text: current,
+        replaceable: !inLineComment && !inBlockComment && !inString && !inTemplate,
+      });
+    }
+
+    return segments
+      .map((seg) => (seg.replaceable ? seg.text.replace(regex, replacement) : seg.text))
+      .join('');
   }
 }

@@ -71,6 +71,7 @@ export class ConnectionPool<T> {
     healthCheckFailures: 0,
   };
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private ready: Promise<void>;
   private disposed = false;
 
   constructor(options: ConnectionPoolOptions<T>) {
@@ -86,7 +87,7 @@ export class ConnectionPool<T> {
     };
 
     // Pre-create minimum connections
-    this.initializePool();
+    this.ready = this.initializePool();
 
     // Start health check timer
     this.healthCheckTimer = setInterval(() => this.healthCheck(), this.options.healthCheckInterval);
@@ -98,6 +99,9 @@ export class ConnectionPool<T> {
       throw new Error(`${this.options.name} is disposed`);
     }
 
+    // Wait for initial pool to be ready
+    await this.ready;
+
     this.stats.totalAcquired++;
 
     // Try to find an idle connection
@@ -106,8 +110,9 @@ export class ConnectionPool<T> {
       return this.activateConnection(idleConn);
     }
 
-    // Try to create a new connection if under max
-    if (this.pool.length < this.options.max) {
+    // Try to create a new connection if under max (use pending count to avoid race)
+    const inUseOrPending = this.pool.filter((c) => c.inUse).length + this.waitQueue.length;
+    if (inUseOrPending < this.options.max) {
       return this.createAndActivate();
     }
 
@@ -131,6 +136,8 @@ export class ConnectionPool<T> {
     // Check if connection has exceeded max life time
     if (Date.now() - pooled.createdAt > this.options.maxLifeTime) {
       this.removeConnection(pooled);
+      // Notify waiters since a slot opened up
+      this._notifyWaiters();
       return;
     }
 
@@ -140,6 +147,8 @@ export class ConnectionPool<T> {
         await this.options.factory.reset(pooled.conn);
       } catch {
         this.removeConnection(pooled);
+        // Notify waiters since a slot opened up
+        this._notifyWaiters();
         return;
       }
     }
@@ -266,6 +275,15 @@ export class ConnectionPool<T> {
     });
   }
 
+  private _notifyWaiters(): void {
+    while (this.waitQueue.length > 0 && this.pool.length < this.options.max) {
+      const waiter = this.waitQueue.shift()!;
+      clearTimeout(waiter.timer);
+      // Create a new connection for the waiter
+      this.createAndActivate().then(waiter.resolve).catch(waiter.reject);
+    }
+  }
+
   private async removeConnection(pooled: PooledConnection<T>): Promise<void> {
     const index = this.pool.indexOf(pooled);
     if (index !== -1) {
@@ -331,5 +349,8 @@ export class ConnectionPool<T> {
         break;
       }
     }
+
+    // Notify any waiters that connections may now be available
+    this._notifyWaiters();
   }
 }

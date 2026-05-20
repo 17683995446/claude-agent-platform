@@ -178,8 +178,12 @@ export class CloneDetector {
 
         const sameFile = fileA.filePath === fileB.filePath;
 
+        // Normalize literals for Type III detection (structural clones with different literals)
+        const normalizedA = this.normalizeLiterals(fileA.lines);
+        const normalizedB = this.normalizeLiterals(fileB.lines);
+
         // Use sliding window comparison with fuzzy matching
-        const matches = this.findFuzzyMatches(fileA.lines, fileB.lines, sameFile);
+        const matches = this.findFuzzyMatches(normalizedA, normalizedB, sameFile);
 
         for (const match of matches) {
           if (match.similarity >= this.type3Threshold && match.linesA.length >= this.minCloneLines) {
@@ -299,6 +303,24 @@ export class CloneDetector {
     return lines.map((line) => {
       // Remove comments
       let normalized = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
+      // Normalize whitespace
+      normalized = normalized.trim().replace(/\s+/g, " ");
+      return normalized;
+    });
+  }
+
+  /**
+   * Normalize literals (numbers, strings) to placeholders for structural comparison.
+   */
+  private normalizeLiterals(lines: string[]): string[] {
+    return lines.map((line) => {
+      let normalized = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
+      // Normalize string literals
+      normalized = normalized.replace(/"(?:[^"\\]|\\.)*"/g, '"LIT"');
+      normalized = normalized.replace(/'(?:[^'\\]|\\.)*'/g, "'LIT'");
+      normalized = normalized.replace(/`(?:[^`\\]|\\.)*`/g, "`LIT`");
+      // Normalize numeric literals
+      normalized = normalized.replace(/\b\d+\.?\d*\b/g, "NUM");
       // Normalize whitespace
       normalized = normalized.trim().replace(/\s+/g, " ");
       return normalized;

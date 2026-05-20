@@ -6,7 +6,7 @@
 
 // Core graph storage
 export { GraphStore } from './graph-store.js';
-export type { GraphNode, GraphEdge, Direction } from './graph-store.js';
+export type { GraphNode, GraphEdge, Direction, GraphChangeEvent, GraphChangeEventType, GraphChangeListener } from './graph-store.js';
 
 // Query language
 export { GraphQuery } from './graph-query.js';
@@ -34,7 +34,7 @@ export type { EmbeddingEntry, SimilarityResult, ClusterResult, EmbedFn, Clusteri
 
 // Graph visualizer
 export { GraphVisualizer } from './graph-visualizer.js';
-export type { LayoutAlgorithm, LayoutOptions, NodePosition, LayoutResult, SubgraphResult } from './graph-visualizer.js';
+export type { LayoutAlgorithm, LayoutOptions, NodePosition, LayoutResult, SubgraphResult, ColorScheme } from './graph-visualizer.js';
 
 // Temporal graph
 export { TemporalGraph } from './temporal-graph.js';

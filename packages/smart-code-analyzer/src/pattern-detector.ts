@@ -382,11 +382,27 @@ export class PatternDetector {
 
   // --- Private helpers ---
 
+  /**
+   * Strip string literals and comments from code to avoid false matches.
+   */
+  private stripStringsAndComments(code: string): string {
+    // Remove single-line comments
+    let result = code.replace(/\/\/.*$/gm, "");
+    // Remove multi-line comments
+    result = result.replace(/\/\*[\s\S]*?\*\//g, "");
+    // Remove string literals (double-quoted, single-quoted, template)
+    result = result.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    result = result.replace(/'(?:[^'\\]|\\.)*'/g, "''");
+    result = result.replace(/`(?:[^`\\]|\\.)*`/g, "``");
+    return result;
+  }
+
   private findNodesByType(root: ASTNode, type: string): ASTNode[] {
     const results: ASTNode[] = [];
+    const lowerType = type.toLowerCase();
 
     const walk = (node: ASTNode): void => {
-      if (node.type === type || node.kind === type) {
+      if (node.type?.toLowerCase() === lowerType || node.kind?.toLowerCase() === lowerType) {
         results.push(node);
       }
 

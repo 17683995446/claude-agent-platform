@@ -132,6 +132,33 @@ export class DependencyGraph {
   }
 
   /**
+   * Get ALL transitive dependents of the given node (BFS with memoization).
+   * @param id - Node id
+   * @returns Array of all transitively dependent node ids
+   */
+  getAllDependents(id: string): string[] {
+    const visited = new Set<string>();
+    const queue: string[] = [id];
+    visited.add(id);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const node = this.nodes.get(current);
+      if (!node) continue;
+
+      for (const dep of node.dependents) {
+        if (!visited.has(dep)) {
+          visited.add(dep);
+          queue.push(dep);
+        }
+      }
+    }
+
+    visited.delete(id);
+    return [...visited];
+  }
+
+  /**
    * Get all dependencies of the given node.
    * @param id - Node id
    * @returns Array of dependency node ids
@@ -151,6 +178,7 @@ export class DependencyGraph {
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
     const path: string[] = [];
+    const seenCycleKeys = new Set<string>();
 
     const dfs = (nodeId: string): void => {
       visited.add(nodeId);
@@ -166,6 +194,11 @@ export class DependencyGraph {
           const cycleStart = path.indexOf(neighborId);
           const cycleNodes = path.slice(cycleStart);
           cycleNodes.push(neighborId);
+
+          // Deduplicate cycles using a canonical key
+          const cycleKey = cycleNodes.slice(0, -1).sort().join("->");
+          if (seenCycleKeys.has(cycleKey)) continue;
+          seenCycleKeys.add(cycleKey);
 
           const cycleEdges: DependencyEdge[] = [];
           for (let i = 0; i < cycleNodes.length - 1; i++) {
@@ -202,17 +235,20 @@ export class DependencyGraph {
       throw new Error("Cannot perform topological sort: graph contains circular dependencies");
     }
 
-    const inDegree = new Map<string, number>();
+    // Use out-degree (reverse direction) so dependencies come before dependents.
+    // In this graph, edges go from dependent to dependency (a->b means a depends on b).
+    // We want b before a, so we process nodes with no outgoing edges first.
+    const outDegree = new Map<string, number>();
     for (const nodeId of this.nodes.keys()) {
-      inDegree.set(nodeId, 0);
+      outDegree.set(nodeId, 0);
     }
 
     for (const [, edge] of this.edges) {
-      inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+      outDegree.set(edge.from, (outDegree.get(edge.from) ?? 0) + 1);
     }
 
     const queue: string[] = [];
-    for (const [nodeId, degree] of inDegree) {
+    for (const [nodeId, degree] of outDegree) {
       if (degree === 0) queue.push(nodeId);
     }
 
@@ -227,10 +263,11 @@ export class DependencyGraph {
         layer.push(nodeId);
         flat.push(nodeId);
 
-        const neighbors = this.adjacencyList.get(nodeId) ?? new Map();
-        for (const [neighborId] of neighbors) {
-          const newDegree = (inDegree.get(neighborId) ?? 1) - 1;
-          inDegree.set(neighborId, newDegree);
+        // Use reverse adjacency: find who points TO this node (its dependents)
+        const reverseNeighbors = this.reverseAdjacencyList.get(nodeId) ?? new Map();
+        for (const [neighborId] of reverseNeighbors) {
+          const newDegree = (outDegree.get(neighborId) ?? 1) - 1;
+          outDegree.set(neighborId, newDegree);
           if (newDegree === 0) {
             nextQueue.push(neighborId);
           }
@@ -250,7 +287,7 @@ export class DependencyGraph {
    * @returns Critical path information
    */
   getCriticalPath(): CriticalPathInfo {
-    // Find nodes with no dependents (sinks)
+    // Find nodes with no dependents (sinks) - these are the "root" nodes
     const sinks: string[] = [];
     for (const [id, node] of this.nodes) {
       if (node.dependents.length === 0) {
@@ -258,7 +295,7 @@ export class DependencyGraph {
       }
     }
 
-    // Find nodes with no dependencies (sources)
+    // Find nodes with no dependencies (sources) - these are the "leaf" nodes
     const sources: string[] = [];
     for (const [id, node] of this.nodes) {
       if (node.dependencies.length === 0) {
@@ -273,18 +310,18 @@ export class DependencyGraph {
     let bestPath: string[] = [];
     let bestWeight = 0;
 
-    // DFS from each source to find longest path to any sink
+    // DFS from each sink (node with no dependents) following outgoing edges
+    // to find the longest path to any source (node with no dependencies)
     const findLongestPath = (
       current: string,
       path: string[],
       weight: number,
       visited: Set<string>
     ): void => {
-      // Check if current node is a sink (no outgoing edges)
       const neighbors = this.adjacencyList.get(current) ?? new Map();
       const hasOutgoing = neighbors.size > 0;
 
-      if (!hasOutgoing || sinks.includes(current)) {
+      if (!hasOutgoing || sources.includes(current)) {
         if (weight > bestWeight || (weight === bestWeight && path.length > bestPath.length)) {
           bestWeight = weight;
           bestPath = [...path];
@@ -302,9 +339,9 @@ export class DependencyGraph {
       }
     };
 
-    for (const source of sources) {
-      const visited = new Set<string>([source]);
-      findLongestPath(source, [source], 0, visited);
+    for (const sink of sinks) {
+      const visited = new Set<string>([sink]);
+      findLongestPath(sink, [sink], 0, visited);
     }
 
     // Find bottleneck nodes (nodes with highest fan-out)

@@ -71,6 +71,8 @@ export class MemoryMonitor {
   private startTime: number;
   private options: Required<MemoryMonitorOptions>;
   private onLeakWarning: ((warning: MemoryLeakWarning) => void) | null = null;
+  private lastWarningTime = 0;
+  private warningCooldownMs = 30_000; // 30 second cooldown between warnings
 
   constructor(options?: MemoryMonitorOptions) {
     this.startTime = Date.now();
@@ -114,6 +116,51 @@ export class MemoryMonitor {
 
   /** 手动采集快照 */
   takeSnapshot(): MemorySnapshot {
+    // Platform detection
+    const isNode = typeof process !== 'undefined' && typeof process.memoryUsage === 'function';
+
+    if (!isNode) {
+      // Browser environment - use performance.memory if available
+      const perfMemory = (globalThis as Record<string, unknown>).performance as
+        | { memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }
+        | undefined;
+      const browserMem = perfMemory?.memory;
+      const heapUsed = browserMem?.usedJSHeapSize ?? 0;
+      const heapTotal = browserMem?.totalJSHeapSize ?? 0;
+      const snapshot: MemorySnapshot = {
+        timestamp: Date.now(),
+        rss: heapUsed,
+        heapUsed,
+        heapTotal,
+        external: 0,
+        arrayBuffers: 0,
+        heapUsedMB: Math.round((heapUsed / 1024 / 1024) * 100) / 100,
+        heapTotalMB: Math.round((heapTotal / 1024 / 1024) * 100) / 100,
+        rssMB: Math.round((heapUsed / 1024 / 1024) * 100) / 100,
+      };
+
+      const lastSnapshot = this.snapshots[this.snapshots.length - 1];
+      if (lastSnapshot && snapshot.timestamp - lastSnapshot.timestamp < this.options.sampleInterval / 2) {
+        if (!this.peakSnapshot || snapshot.heapUsed > this.peakSnapshot.heapUsed) {
+          this.peakSnapshot = snapshot;
+        }
+        return snapshot;
+      }
+
+      this.snapshots.push(snapshot);
+      this.sampleCount++;
+
+      if (!this.peakSnapshot || snapshot.heapUsed > this.peakSnapshot.heapUsed) {
+        this.peakSnapshot = snapshot;
+      }
+
+      while (this.snapshots.length > this.options.maxSnapshots) {
+        this.snapshots.shift();
+      }
+
+      return snapshot;
+    }
+
     const mem = process.memoryUsage();
     const snapshot: MemorySnapshot = {
       timestamp: Date.now(),
@@ -126,6 +173,16 @@ export class MemoryMonitor {
       heapTotalMB: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
       rssMB: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
     };
+
+    // Deduplicate: skip if last snapshot was taken within the same interval
+    const lastSnapshot = this.snapshots[this.snapshots.length - 1];
+    if (lastSnapshot && snapshot.timestamp - lastSnapshot.timestamp < this.options.sampleInterval / 2) {
+      // Update peak check even for deduplicated snapshots
+      if (!this.peakSnapshot || snapshot.heapUsed > this.peakSnapshot.heapUsed) {
+        this.peakSnapshot = snapshot;
+      }
+      return snapshot;
+    }
 
     this.snapshots.push(snapshot);
     this.sampleCount++;
@@ -184,6 +241,10 @@ export class MemoryMonitor {
     // Only report if growth is positive
     if (growthRate <= this.options.leakThresholdLow) return [];
 
+    // Cooldown: don't spam warnings
+    const now = Date.now();
+    if (now - this.lastWarningTime < this.warningCooldownMs) return [];
+
     let severity: MemoryLeakWarning['severity'];
     let suggestion: string;
 
@@ -209,6 +270,7 @@ export class MemoryMonitor {
     };
 
     this.leakWarnings.push(warning);
+    this.lastWarningTime = Date.now();
     this.onLeakWarning?.(warning);
 
     return [warning];
@@ -233,10 +295,30 @@ export class MemoryMonitor {
 
   /** 获取统计信息 */
   getStats(): MemoryMonitorStats {
-    const current = this.snapshots[this.snapshots.length - 1] ?? this.takeSnapshot();
+    const current = this.snapshots[this.snapshots.length - 1];
     return {
-      current,
-      peak: this.peakSnapshot ?? current,
+      current: current ?? {
+        timestamp: Date.now(),
+        rss: 0,
+        heapUsed: 0,
+        heapTotal: 0,
+        external: 0,
+        arrayBuffers: 0,
+        heapUsedMB: 0,
+        heapTotalMB: 0,
+        rssMB: 0,
+      },
+      peak: this.peakSnapshot ?? {
+        timestamp: Date.now(),
+        rss: 0,
+        heapUsed: 0,
+        heapTotal: 0,
+        external: 0,
+        arrayBuffers: 0,
+        heapUsedMB: 0,
+        heapTotalMB: 0,
+        rssMB: 0,
+      },
       snapshots: [...this.snapshots],
       leakWarnings: [...this.leakWarnings],
       gcTriggeredCount: this.gcTriggeredCount,

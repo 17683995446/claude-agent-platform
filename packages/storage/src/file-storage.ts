@@ -7,10 +7,10 @@ import type {
   StorageStats,
 } from './storage-interface.ts';
 import { NamespacedStorage } from './storage-interface.ts';
-import { readdir, readFile, writeFile, mkdir, unlink, rename, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, unlink, rename, stat, chmod } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { watch, type FSWatcher } from 'node:fs';
 
 /**
  * FileStorage 配置选项
@@ -51,6 +51,13 @@ export class FileStorage<T> implements IStorage<T> {
   private readonly sharding: boolean;
   private readonly shardCount: number;
   private _evictionCount = 0;
+  /** 从原始键到文件名的映射 */
+  private keyToFileMap = new Map<string, string>();
+  /** 从文件名到原始键的反向映射 */
+  private fileToKeyMap = new Map<string, string>();
+  private fileWatcher: FSWatcher | null = null;
+  private changeListeners: Array<(key: string, event: 'change' | 'rename' | 'delete') => void> = [];
+  private writeLocks: Map<string, Promise<void>> = new Map();
 
   constructor(options: FileStorageOptions = {}) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -62,18 +69,35 @@ export class FileStorage<T> implements IStorage<T> {
   }
 
   private getFilePath(key: string): string {
-    const safeKey = key.replace(/[\/\\:*?"<>|]/g, '_');
+    // 使用 hash 编码确保唯一性，避免不同键产生相同文件名
+    const encoded = this.encodeKey(key);
     if (this.sharding) {
       const hash = simpleHash(key) % this.shardCount;
-      return join(this.directory, `shard-${hash}`, `${safeKey}.json`);
+      return join(this.directory, `shard-${hash}`, `${encoded}.json`);
     }
-    return join(this.directory, `${safeKey}.json`);
+    return join(this.directory, `${encoded}.json`);
+  }
+
+  /**
+   * 将原始键编码为安全的文件名（使用 base64url 编码保证唯一性）
+   */
+  private encodeKey(key: string): string {
+    return Buffer.from(key, 'utf-8').toString('base64url');
+  }
+
+  /**
+   * 从编码后的文件名解码出原始键
+   */
+  private decodeKey(encoded: string): string {
+    return Buffer.from(encoded, 'base64url').toString('utf-8');
   }
 
   private async ensureDir(filePath: string): Promise<void> {
     const dir = dirname(filePath);
-    if (!existsSync(dir)) {
+    try {
       await mkdir(dir, { recursive: true });
+    } catch {
+      // 目录已存在或创建失败，忽略
     }
   }
 
@@ -120,32 +144,54 @@ export class FileStorage<T> implements IStorage<T> {
   }
 
   async set(key: string, value: T, options?: SetOptions): Promise<void> {
-    const filePath = this.getFilePath(key);
-    await this.ensureDir(filePath);
+    // Serialize writes to same key
+    const prevLock = this.writeLocks.get(key) || Promise.resolve();
+    let resolveLock: () => void;
+    const currentLock = new Promise<void>(r => { resolveLock = r; });
+    this.writeLocks.set(key, currentLock);
 
-    const now = Date.now();
-    let existing: StorageEntry<T> | undefined;
     try {
-      const raw = await readFile(filePath, this.encoding);
-      existing = this.deserializeEntry(raw);
-    } catch {
-      // 文件不存在，创建新条目
+      await prevLock;
+      const filePath = this.getFilePath(key);
+      await this.ensureDir(filePath);
+
+      const now = Date.now();
+      let existing: StorageEntry<T> | undefined;
+      try {
+        const raw = await readFile(filePath, this.encoding);
+        existing = this.deserializeEntry(raw);
+      } catch {
+        // 文件不存在，创建新条目
+      }
+
+      const entry: StorageEntry<T> = {
+        value,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        expiresAt: options?.ttl ? now + options.ttl : undefined,
+        tags: options?.tags ?? existing?.tags ?? [],
+        metadata: options?.metadata ?? existing?.metadata ?? {},
+        version: existing ? existing.version + 1 : 1,
+      };
+
+      const serialized = this.serializeEntry(entry);
+      const tmpPath = `${filePath}.tmp`;
+      await writeFile(tmpPath, serialized, this.encoding);
+      // 设置文件权限为仅所有者可读写 (0o600)
+      try {
+        await chmod(tmpPath, 0o600);
+      } catch {
+        // chmod 不支持时忽略
+      }
+      // Re-ensure directory exists before rename to prevent ENOENT race
+      await this.ensureDir(filePath);
+      await rename(tmpPath, filePath);
+    } finally {
+      resolveLock!();
+      if (this.writeLocks.get(key) === currentLock) {
+        this.writeLocks.delete(key);
+      }
     }
-
-    const entry: StorageEntry<T> = {
-      value,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      expiresAt: options?.ttl ? now + options.ttl : undefined,
-      tags: options?.tags ?? existing?.tags ?? [],
-      metadata: options?.metadata ?? existing?.metadata ?? {},
-      version: existing ? existing.version + 1 : 1,
-    };
-
-    const serialized = this.serializeEntry(entry);
-    const tmpPath = `${filePath}.tmp`;
-    await writeFile(tmpPath, serialized, this.encoding);
-    await rename(tmpPath, filePath);
   }
 
   async delete(key: string): Promise<boolean> {
@@ -170,16 +216,25 @@ export class FileStorage<T> implements IStorage<T> {
   }
 
   private async collectKeys(dir: string, result: string[], pattern?: string): Promise<void> {
-    if (!existsSync(dir)) return;
-    const entries = await readdir(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // 目录不存在
+    }
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
         await this.collectKeys(fullPath, result, pattern);
       } else if (entry.name.endsWith('.json')) {
-        const key = entry.name.slice(0, -5);
-        if (!pattern || matchPattern(key, pattern)) {
-          result.push(key);
+        const encoded = entry.name.slice(0, -5);
+        try {
+          const key = this.decodeKey(encoded);
+          if (!pattern || matchPattern(key, pattern)) {
+            result.push(key);
+          }
+        } catch {
+          // 无法解码的文件名，跳过
         }
       }
     }
@@ -234,7 +289,92 @@ export class FileStorage<T> implements IStorage<T> {
     }
   }
 
+  async rename(oldKey: string, newKey: string): Promise<boolean> {
+    const oldFilePath = this.getFilePath(oldKey);
+    const newFilePath = this.getFilePath(newKey);
+    try {
+      await this.ensureDir(newFilePath);
+      await rename(oldFilePath, newFilePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async copy(sourceKey: string, targetKey: string): Promise<boolean> {
+    const sourceEntry = await this.getEntry(sourceKey);
+    if (!sourceEntry) return false;
+    try {
+      await this.set(targetKey, sourceEntry.value, {
+        ttl: sourceEntry.expiresAt ? sourceEntry.expiresAt - Date.now() : undefined,
+        tags: sourceEntry.tags,
+        metadata: sourceEntry.metadata,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ---- 扩展功能 ----
+
+  /**
+   * 监听存储目录的文件变更
+   */
+  watchChanges(): () => void {
+    if (this.fileWatcher) {
+      this.stopWatching();
+    }
+
+    try {
+      this.fileWatcher = watch(this.directory, { recursive: true }, (eventType, filename) => {
+        if (!filename) return;
+        try {
+          let key: string | undefined;
+          if (filename.endsWith('.json')) {
+            const encoded = filename.slice(0, -5);
+            key = this.decodeKey(encoded);
+          }
+          if (key) {
+            const evt = eventType === 'rename' ? 'rename' : eventType === 'change' ? 'change' : 'change';
+            for (const listener of this.changeListeners) {
+              try {
+                listener(key, evt);
+              } catch {
+                // 忽略监听器错误
+              }
+            }
+          }
+        } catch {
+          // 无法解码文件名，忽略
+        }
+      });
+    } catch {
+      // watch 不支持时忽略
+    }
+
+    return () => this.stopWatching();
+  }
+
+  /**
+   * 注册变更监听器
+   */
+  onChange(listener: (key: string, event: 'change' | 'rename' | 'delete') => void): () => void {
+    this.changeListeners.push(listener);
+    return () => {
+      this.changeListeners = this.changeListeners.filter((l) => l !== listener);
+    };
+  }
+
+  /**
+   * 停止文件监听
+   */
+  stopWatching(): void {
+    if (this.fileWatcher) {
+      this.fileWatcher.close();
+      this.fileWatcher = null;
+    }
+  }
 
   /**
    * 清理过期条目
@@ -259,7 +399,7 @@ export class FileStorage<T> implements IStorage<T> {
     const allKeys = await this.keys();
     for (const key of allKeys) {
       const srcPath = this.getFilePath(key);
-      const destPath = join(backupDir, `${key.replace(/[\/\\:*?"<>|]/g, '_')}.json`);
+      const destPath = join(backupDir, `${this.encodeKey(key)}.json`);
       await this.ensureDir(destPath);
       try {
         const { copyFile } = await import('node:fs/promises');
@@ -274,13 +414,23 @@ export class FileStorage<T> implements IStorage<T> {
    * 从备份恢复
    */
   async restore(backupDir: string): Promise<number> {
-    if (!existsSync(backupDir)) return 0;
-    const entries = await readdir(backupDir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await readdir(backupDir, { withFileTypes: true });
+    } catch {
+      return 0;
+    }
     let count = 0;
     for (const entry of entries) {
       if (entry.isFile() && entry.name.endsWith('.json')) {
         const srcPath = join(backupDir, entry.name);
-        const key = entry.name.slice(0, -5);
+        const encoded = entry.name.slice(0, -5);
+        let key: string;
+        try {
+          key = this.decodeKey(encoded);
+        } catch {
+          continue;
+        }
         const destPath = this.getFilePath(key);
         await this.ensureDir(destPath);
         try {

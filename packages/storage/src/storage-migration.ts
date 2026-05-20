@@ -25,6 +25,8 @@ export interface MigrationOptions {
   batchSize?: number;
   /** 进度回调 */
   onProgress?: (progress: MigrationProgress) => void;
+  /** 强制允许版本降级 */
+  forceDowngrade?: boolean;
 }
 
 /**
@@ -76,6 +78,30 @@ export class StorageMigrator {
     const startTime = Date.now();
     const conflictStrategy = options.conflictStrategy ?? 'overwrite';
     const batchSize = options.batchSize ?? 100;
+
+    // 检查版本降级：如果目标版本高于源版本，阻止降级迁移
+    if (!options.forceDowngrade) {
+      const sourceVersion = await this.getStorageVersion(source);
+      const targetVersion = await this.getStorageVersion(target);
+      if (targetVersion > sourceVersion && sourceVersion > 0) {
+        return {
+          succeeded: false,
+          total: 0,
+          migrated: 0,
+          skipped: 0,
+          failed: 0,
+          errors: [{
+            key: '__version__',
+            error: new Error(
+              `Version downgrade detected: source version ${sourceVersion} < target version ${targetVersion}. ` +
+              `Use forceDowngrade option to override.`
+            ),
+          }],
+          duration: Date.now() - startTime,
+          dryRun: options.dryRun ?? false,
+        };
+      }
+    }
 
     const allKeys = await source.keys();
     const result: MigrationResult = {
@@ -183,7 +209,7 @@ export class StorageMigrator {
 
     // 数据完整性验证
     if (options.verify && !options.dryRun) {
-      const verifyResult = await this.verify(source, target);
+      const verifyResult = await this.verify(source, target, options.transform);
       if (!verifyResult.valid) {
         result.succeeded = false;
         for (const key of verifyResult.mismatchedKeys) {
@@ -205,18 +231,35 @@ export class StorageMigrator {
   async verify(
     source: IStorage<unknown>,
     target: IStorage<unknown>,
+    transform?: (entry: StorageEntry<unknown>) => StorageEntry<unknown> | Promise<StorageEntry<unknown>>,
   ): Promise<{ valid: boolean; mismatchedKeys: string[]; checkedKeys: number }> {
     const sourceKeys = await source.keys();
     const mismatchedKeys: string[] = [];
     let checkedKeys = 0;
 
     for (const key of sourceKeys) {
-      const sourceValue = await source.get(key);
+      const sourceEntry = await source.getEntry(key);
+      if (!sourceEntry) {
+        checkedKeys++;
+        continue;
+      }
+
+      // 如果有转换函数，先对源数据进行转换再比较
+      let expectedValue = sourceEntry.value;
+      if (transform) {
+        try {
+          const transformed = await transform(sourceEntry);
+          expectedValue = transformed.value;
+        } catch {
+          // 转换失败，使用原始值
+        }
+      }
+
       const targetValue = await target.get(key);
 
       checkedKeys++;
 
-      if (JSON.stringify(sourceValue) !== JSON.stringify(targetValue)) {
+      if (JSON.stringify(expectedValue) !== JSON.stringify(targetValue)) {
         mismatchedKeys.push(key);
       }
     }
@@ -252,5 +295,18 @@ export class StorageMigrator {
     }
 
     return { restored, errors };
+  }
+
+  /**
+   * 获取存储的版本号（通过 __storage_version__ 键）
+   */
+  private async getStorageVersion(storage: IStorage<unknown>): Promise<number> {
+    try {
+      const version = await storage.get('__storage_version__');
+      if (typeof version === 'number') return version;
+      return 0;
+    } catch {
+      return 0;
+    }
   }
 }

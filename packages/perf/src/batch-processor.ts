@@ -16,12 +16,15 @@ export interface BatchProcessorOptions<TItem, TResult> {
   isolateErrors?: boolean;
   /** 批处理超时时间（ms） */
   batchTimeout?: number;
+  /** 最大队列大小（0 表示无限制） */
+  maxQueueSize?: number;
 }
 
 interface BatchEntry<TItem, TResult> {
   item: TItem;
   resolve: (result: TResult) => void;
   reject: (error: Error) => void;
+  enqueuedAt: number;
 }
 
 export interface BatchProcessorStats {
@@ -39,6 +42,12 @@ export interface BatchProcessorStats {
   pendingItems: number;
   /** 平均处理时间（ms） */
   avgProcessTime: number;
+  /** 总等待时间（ms） */
+  totalWaitTime: number;
+  /** 平均等待时间（ms） */
+  avgWaitTime: number;
+  /** 成功率 */
+  successRate: number;
 }
 
 export class BatchProcessor<TItem, TResult> {
@@ -52,6 +61,8 @@ export class BatchProcessor<TItem, TResult> {
     maxBatchSize: 0,
     errorCount: 0,
     totalProcessTime: 0,
+    totalWaitTime: 0,
+    successCount: 0,
   };
   private disposed = false;
 
@@ -63,6 +74,7 @@ export class BatchProcessor<TItem, TResult> {
       concurrency: options.concurrency ?? 5,
       isolateErrors: options.isolateErrors ?? true,
       batchTimeout: options.batchTimeout ?? 30_000,
+      maxQueueSize: options.maxQueueSize ?? 0,
     };
   }
 
@@ -72,8 +84,14 @@ export class BatchProcessor<TItem, TResult> {
       return Promise.reject(new Error('BatchProcessor is disposed'));
     }
 
+    // Backpressure: reject if queue is full
+    if (this.options.maxQueueSize > 0 && this.queue.length >= this.options.maxQueueSize) {
+      return Promise.reject(new Error('BatchProcessor queue is full'));
+    }
+
     return new Promise<TResult>((resolve, reject) => {
-      this.queue.push({ item, resolve, reject });
+      const enqueuedAt = Date.now();
+      this.queue.push({ item, resolve, reject, enqueuedAt });
 
       // Flush immediately if batch is full
       if (this.queue.length >= this.options.maxBatchSize) {
@@ -120,6 +138,7 @@ export class BatchProcessor<TItem, TResult> {
 
   /** 获取统计信息 */
   getStats(): BatchProcessorStats {
+    const totalProcessed = this.stats.totalItems;
     return {
       totalBatches: this.stats.totalBatches,
       totalItems: this.stats.totalItems,
@@ -134,6 +153,15 @@ export class BatchProcessor<TItem, TResult> {
         this.stats.totalBatches > 0
           ? Math.round(this.stats.totalProcessTime / this.stats.totalBatches)
           : 0,
+      totalWaitTime: this.stats.totalWaitTime,
+      avgWaitTime:
+        totalProcessed > 0
+          ? Math.round(this.stats.totalWaitTime / totalProcessed)
+          : 0,
+      successRate:
+        totalProcessed > 0
+          ? Math.round(((totalProcessed - this.stats.errorCount) / totalProcessed) * 10000) / 100
+          : 100,
     };
   }
 
@@ -172,6 +200,12 @@ export class BatchProcessor<TItem, TResult> {
     const startTime = Date.now();
     const items = batch.map((entry) => entry.item);
 
+    // Track wait times
+    const now = Date.now();
+    for (const entry of batch) {
+      this.stats.totalWaitTime += now - entry.enqueuedAt;
+    }
+
     try {
       const results = await this.withTimeout(
         this.options.processor(items),
@@ -182,6 +216,7 @@ export class BatchProcessor<TItem, TResult> {
       this.stats.totalItems += items.length;
       this.stats.maxBatchSize = Math.max(this.stats.maxBatchSize, items.length);
       this.stats.totalProcessTime += Date.now() - startTime;
+      this.stats.successCount += items.length;
 
       // Resolve each entry
       for (let i = 0; i < batch.length; i++) {
@@ -195,10 +230,19 @@ export class BatchProcessor<TItem, TResult> {
       this.stats.errorCount++;
 
       if (this.options.isolateErrors) {
-        // Isolate errors: reject all entries in this batch
-        const err = error instanceof Error ? error : new Error(String(error));
+        // Isolate errors: try to process items individually so that
+        // a failure in one item doesn't reject all items
         for (const entry of batch) {
-          entry.reject(err);
+          try {
+            const singleResult = await this.withTimeout(
+              this.options.processor([entry.item]),
+              this.options.batchTimeout,
+            );
+            entry.resolve(singleResult[0]);
+          } catch (singleError) {
+            const singleErr = singleError instanceof Error ? singleError : new Error(String(singleError));
+            entry.reject(singleErr);
+          }
         }
       } else {
         // Non-isolated: reject all entries

@@ -56,11 +56,33 @@ export class StorageUtils {
   }
 
   /**
+   * 清理键中的不安全字符（仅移除控制字符和空字节）
+   */
+  static sanitizeKey(key: string): string {
+    return key.replace(/[\x00-\x1f\x7f]/g, '');
+  }
+
+  /**
    * 从键中提取命名空间
    */
   static extractNamespace(key: string): string {
     const idx = key.indexOf(':');
     return idx >= 0 ? key.slice(0, idx) : '';
+  }
+
+  /**
+   * 为键添加命名空间前缀
+   */
+  static withNamespace(key: string, namespace: string): string {
+    return `${namespace}:${key}`;
+  }
+
+  /**
+   * 从键中移除命名空间前缀
+   */
+  static withoutNamespace(key: string, namespace: string): string {
+    const prefix = `${namespace}:`;
+    return key.startsWith(prefix) ? key.slice(prefix.length) : key;
   }
 
   /**

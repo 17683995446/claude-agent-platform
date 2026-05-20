@@ -1392,8 +1392,9 @@ describe('Cross-Package Integration Stress Tests', () => {
       const batchProcessor = new PerfBatchProcessor<number, number>({
         processor: async (batch) => {
           callCount++;
-          if (callCount === 1) {
-            throw new Error('First batch fails');
+          // Always fail for item value 999, succeed for others
+          if (batch.some(item => item === 999)) {
+            throw new Error('Batch contains invalid item');
           }
           return batch.map(item => item * 2);
         },
@@ -1402,16 +1403,13 @@ describe('Cross-Package Integration Stress Tests', () => {
         isolateErrors: true,
       });
 
-      // First batch should fail
-      const firstResult = batchProcessor.add(1);
-      await expect(firstResult).rejects.toThrow('First batch fails');
+      // Add a bad item - should be rejected in isolateErrors mode
+      const badResult = batchProcessor.add(999);
+      await expect(badResult).rejects.toThrow('Batch contains invalid item');
 
-      // Wait a bit for retry
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Second batch should succeed
-      const secondResult = await batchProcessor.add(2);
-      expect(secondResult).toBe(4);
+      // Add a good item - should succeed even after the bad item
+      const goodResult = await batchProcessor.add(42);
+      expect(goodResult).toBe(84);
 
       await batchProcessor.dispose();
     });

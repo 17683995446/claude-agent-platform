@@ -122,6 +122,12 @@ export class LRUCache<V = unknown> {
 
     // Create new entry
     const size = this.options.sizeEstimator(value);
+
+    // Reject entries larger than maxMemory limit
+    if (this.options.maxMemoryBytes !== undefined && size > this.options.maxMemoryBytes) {
+      return;
+    }
+
     const entry: CacheEntry<V> = {
       value,
       key,
@@ -264,10 +270,19 @@ export class LRUCache<V = unknown> {
 
   private moveToHead(entry: CacheEntry<V>): void {
     if (entry === this.head) return;
-    this.removeEntry(entry);
+    // Remove from current position in linked list (not from map or memory)
+    if (entry.prev) {
+      entry.prev.next = entry.next;
+    } else {
+      this.head = entry.next;
+    }
+    if (entry.next) {
+      entry.next.prev = entry.prev;
+    } else {
+      this.tail = entry.prev;
+    }
+    // Add to head of linked list
     this.addToHead(entry);
-    this.map.set(entry.key, entry);
-    this.currentMemory += entry.size;
   }
 
   private evictIfNeeded(): void {

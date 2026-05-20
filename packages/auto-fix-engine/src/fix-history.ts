@@ -82,6 +82,14 @@ export type HistoryFormat = 'json' | 'csv';
 export class FixHistory {
   private records: FixRecord[] = [];
   private nextId = 1;
+  private maxHistorySize: number;
+
+  /**
+   * @param maxHistorySize - Maximum number of records to keep (default: 10000). Oldest records are evicted when exceeded.
+   */
+  constructor(maxHistorySize: number = 10000) {
+    this.maxHistorySize = maxHistorySize;
+  }
 
   /**
    * Record a fix in the history.
@@ -111,6 +119,12 @@ export class FixHistory {
       categories,
     };
     this.records.push(record);
+
+    // Evict oldest records if exceeding max size (LRU-style: oldest first)
+    if (this.records.length > this.maxHistorySize) {
+      this.records = this.records.slice(this.records.length - this.maxHistorySize);
+    }
+
     return id;
   }
 
@@ -491,6 +505,59 @@ export class FixHistory {
    */
   get size(): number {
     return this.records.length;
+  }
+
+  /**
+   * Save fix history to a file path (synchronous).
+   * @param filePath - The file path to save to
+   * @returns True if save was successful
+   */
+  saveToFile(filePath: string): boolean {
+    try {
+      const data = JSON.stringify(this.records, null, 2);
+      // Use a simple approach: in Node.js, this would use fs.writeFileSync
+      // For browser/non-Node environments, use localStorage or similar
+      if (typeof process !== 'undefined' && process.versions?.node) {
+        const fs = require('fs');
+        fs.writeFileSync(filePath, data, 'utf-8');
+        return true;
+      }
+      // Fallback: store in a global cache
+      (globalThis as any).__fixHistoryData = data;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Load fix history from a file path (synchronous).
+   * @param filePath - The file path to load from
+   * @returns True if load was successful
+   */
+  loadFromFile(filePath: string): boolean {
+    try {
+      let data: string;
+      if (typeof process !== 'undefined' && process.versions?.node) {
+        const fs = require('fs');
+        data = fs.readFileSync(filePath, 'utf-8');
+      } else {
+        data = (globalThis as any).__fixHistoryData;
+        if (!data) return false;
+      }
+      const parsed = JSON.parse(data) as FixRecord[];
+      if (!Array.isArray(parsed)) return false;
+      this.records = parsed;
+      // Update nextId to avoid collisions
+      const maxId = this.records.reduce((max, r) => {
+        const num = parseInt(r.id.replace(/\D/g, ''), 10) || 0;
+        return num > max ? num : max;
+      }, 0);
+      this.nextId = maxId + 1;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

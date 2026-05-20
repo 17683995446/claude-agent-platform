@@ -179,11 +179,15 @@ export class TypeInference {
           }
         }
 
+        // Build union type if multiple distinct types found
+        const uniqueTypes = [...new Set(inferredTypes)];
+        const finalType = uniqueTypes.length === 1 ? bestType : uniqueTypes.join(" | ");
+
         results.push({
           name: param.name,
-          inferredType: bestType,
+          inferredType: finalType,
           confidence: Math.min(bestCount / inferredTypes.length + 0.1, 0.9),
-          possibleTypes: [...new Set(inferredTypes)],
+          possibleTypes: uniqueTypes,
         });
       } else {
         results.push({
@@ -298,14 +302,17 @@ export class TypeInference {
     const genericCandidates = [...usedTypes].filter((t) => /^[A-Z]$/.test(t));
 
     if (genericCandidates.length > 0) {
+      // Try to resolve generic parameters from usage context
+      const resolvedGenerics = this.resolveGenericParams(classNode, genericCandidates);
+
       return {
         name,
-        type: `${name}<${genericCandidates.join(", ")}>`,
+        type: `${name}<${resolvedGenerics.join(", ")}>`,
         confidence: 0.7,
         sources: ["usage_inference"],
         isNullable: false,
         isGeneric: true,
-        genericParams: genericCandidates,
+        genericParams: resolvedGenerics,
       };
     }
 
@@ -534,5 +541,73 @@ export class TypeInference {
       return match[1].split(",").map((p) => p.trim());
     }
     return undefined;
+  }
+
+  /**
+   * Attempt to resolve generic type parameters from usage context.
+   * If a generic param (e.g., T) is only used in one concrete type context,
+   * resolve it to that concrete type.
+   */
+  private resolveGenericParams(classNode: ASTNode, genericCandidates: string[]): string[] {
+    const methods = (classNode.methods as ASTNode[]) ?? [];
+    const properties = (classNode.properties as ASTNode[]) ?? [];
+
+    // Collect concrete types that appear alongside generic params
+    const concreteTypesByGeneric = new Map<string, Set<string>>();
+
+    for (const method of methods) {
+      const returnType = method.returnType as string | undefined;
+      if (returnType) {
+        for (const g of genericCandidates) {
+          if (returnType.includes(g)) {
+            // Look for concrete type in the same signature
+            const params = (method.parameters as Array<{ type?: string }>) ?? [];
+            for (const p of params) {
+              if (p.type && !genericCandidates.includes(p.type)) {
+                const set = concreteTypesByGeneric.get(g) ?? new Set();
+                set.add(p.type);
+                concreteTypesByGeneric.set(g, set);
+              }
+            }
+          }
+        }
+      }
+
+      const params = (method.parameters as Array<{ type?: string }>) ?? [];
+      for (const p of params) {
+        if (p.type) {
+          for (const g of genericCandidates) {
+            if (p.type.includes(g) && p.type !== g) {
+              // e.g., Array<T> -> resolve T from other params
+              const set = concreteTypesByGeneric.get(g) ?? new Set();
+              set.add(p.type.replace(g, "unknown"));
+              concreteTypesByGeneric.set(g, set);
+            }
+          }
+        }
+      }
+    }
+
+    for (const prop of properties) {
+      const propType = prop.type as string | undefined;
+      if (propType) {
+        for (const g of genericCandidates) {
+          if (propType.includes(g) && propType !== g) {
+            const set = concreteTypesByGeneric.get(g) ?? new Set();
+            set.add(propType.replace(g, "unknown"));
+            concreteTypesByGeneric.set(g, set);
+          }
+        }
+      }
+    }
+
+    // Resolve: if a generic has exactly one concrete candidate, use it
+    return genericCandidates.map((g) => {
+      const concreteSet = concreteTypesByGeneric.get(g);
+      if (concreteSet && concreteSet.size === 1) {
+        return [...concreteSet][0];
+      }
+      return g;
+    });
   }
 }

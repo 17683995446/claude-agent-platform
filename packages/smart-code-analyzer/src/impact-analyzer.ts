@@ -138,6 +138,9 @@ export class ImpactAnalyzer {
         affected.add(dep);
       }
 
+      // Follow re-export chains (barrel files)
+      this.followReExportChains(symbol, depGraph, affected);
+
       // Also check if any node contains this symbol
       for (const nodeId of depGraph.getNodeIds()) {
         const node = depGraph.getNode(nodeId);
@@ -327,6 +330,43 @@ export class ImpactAnalyzer {
   }
 
   // --- Private helpers ---
+
+  /**
+   * Follow re-export chains to find all transitively affected files.
+   * Barrel files re-export symbols, so consumers of the barrel are also affected.
+   */
+  private followReExportChains(symbol: string, depGraph: DependencyGraph, affected: Set<string>): void {
+    const visited = new Set<string>();
+    const queue: string[] = [symbol];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      const node = depGraph.getNode(current);
+      if (!node) continue;
+
+      // Check if this node re-exports (has 'exports' type edges going out)
+      const deps = depGraph.getDependencies(current);
+      for (const dep of deps) {
+        // If the dependency is a re-export (edge type 'exports'), follow it
+        affected.add(dep);
+        if (!visited.has(dep)) {
+          queue.push(dep);
+        }
+      }
+
+      // Also follow dependents that import from re-export nodes
+      const dependents = depGraph.getDependents(current);
+      for (const dep of dependents) {
+        affected.add(dep);
+        if (!visited.has(dep)) {
+          queue.push(dep);
+        }
+      }
+    }
+  }
 
   private flattenNodes(node: ASTNode): ASTNode[] {
     const results: ASTNode[] = [];

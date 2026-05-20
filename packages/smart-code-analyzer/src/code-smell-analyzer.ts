@@ -6,6 +6,7 @@
  */
 
 import type { ASTNode, AST } from "./ast-parser.js";
+import { ASTParser } from "./ast-parser.js";
 
 /** Severity level of a code smell */
 export type SmellSeverity = "low" | "medium" | "high" | "critical";
@@ -330,17 +331,18 @@ export class CodeSmellAnalyzer {
    * @returns Ranked array of all detected code smells
    */
   analyzeSmells(code: string): CodeSmell[] {
-    // Build a minimal AST from the code
-    const lines = code.split("\n");
-    const ast: ASTNode = {
-      type: "Program",
-      body: lines.map((line, i) => ({
-        type: "Statement",
-        range: { start: { line: i + 1, column: 0 }, end: { line: i + 1, column: line.length } },
-      })),
-    };
+    // Use ASTParser to build a proper AST from the code
+    const parser = new ASTParser("typescript");
+    const parsedAst = parser.parse(code);
 
     const allSmells: CodeSmell[] = [];
+
+    // Use the parsed AST body for detection
+    const ast: ASTNode = {
+      type: "Program",
+      body: parsedAst.body,
+      range: parsedAst.range,
+    };
 
     allSmells.push(...this.detectLongMethods(ast));
     allSmells.push(...this.detectGodClasses(ast));

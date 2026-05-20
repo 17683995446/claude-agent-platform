@@ -177,8 +177,10 @@ export class StorageQueryBuilder<T> {
 
   // ---- 排序 ----
 
-  orderBy(field: string, order: 'asc' | 'desc' = 'asc'): this {
-    this.sortConfig = { field, order };
+  orderBy(field: string, order: string = 'asc'): this {
+    // 验证排序方向，防止注入
+    const normalizedOrder = order.toLowerCase() === 'desc' ? 'desc' : 'asc';
+    this.sortConfig = { field, order: normalizedOrder };
     return this;
   }
 

@@ -63,6 +63,17 @@ export interface FixPlan {
 export class FixScheduler {
   private fixes: Map<string, ScheduledFix> = new Map();
   private nextId = 1;
+  private maxConcurrency: number;
+  private retryCount: number;
+
+  /**
+   * @param maxConcurrency - Maximum number of fixes that can run concurrently (default: 5)
+   * @param retryCount - Number of times to retry failed fixes (default: 0)
+   */
+  constructor(maxConcurrency: number = 5, retryCount: number = 0) {
+    this.maxConcurrency = maxConcurrency;
+    this.retryCount = retryCount;
+  }
 
   /**
    * Add a fix to the scheduler.
@@ -80,6 +91,16 @@ export class FixScheduler {
     description: string = '',
     safe: boolean = true,
   ): string {
+    // Deduplication: check if same description+category+priority already exists
+    // Only deduplicate when description is non-empty (to avoid false positives)
+    if (description) {
+      for (const existing of this.fixes.values()) {
+        if (existing.description === description && existing.category === category && existing.priority === priority) {
+          return existing.id;
+        }
+      }
+    }
+
     const id = `fix-${this.nextId++}`;
     const scheduledFix: ScheduledFix = {
       id,
@@ -198,17 +219,29 @@ export class FixScheduler {
 
     const safeFixes = this.getAllFixes().filter((f) => f.safe);
 
-    for (const scheduledFix of safeFixes) {
-      try {
-        const result = scheduledFix.fixFn(currentCode, diagnostics);
-        if (result.fixed) {
-          currentCode = result.code;
-          allChanges.push(...result.changes);
-          totalConfidence += result.confidence;
-          fixCount++;
+    // Apply up to maxConcurrency fixes at a time
+    const batchSize = this.maxConcurrency;
+    for (let batchStart = 0; batchStart < safeFixes.length; batchStart += batchSize) {
+      const batch = safeFixes.slice(batchStart, batchStart + batchSize);
+      for (const scheduledFix of batch) {
+        let applied = false;
+        for (let attempt = 0; attempt <= this.retryCount; attempt++) {
+          try {
+            const result = scheduledFix.fixFn(currentCode, diagnostics);
+            if (result.fixed) {
+              currentCode = result.code;
+              allChanges.push(...result.changes);
+              totalConfidence += result.confidence;
+              fixCount++;
+              applied = true;
+              break;
+            }
+          } catch {
+            if (attempt === this.retryCount) {
+              // All retries exhausted, skip this fix
+            }
+          }
         }
-      } catch {
-        // Skip failed safe fixes silently
       }
     }
 

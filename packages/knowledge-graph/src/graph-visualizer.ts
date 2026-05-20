@@ -20,6 +20,16 @@ export interface LayoutOptions {
   damping?: number;
 }
 
+/** Color scheme for visualization */
+export interface ColorScheme {
+  nodeFill?: string;
+  nodeStroke?: string;
+  edgeStroke?: string;
+  labelColor?: string;
+  background?: string;
+  highlight?: string;
+}
+
 /** Node position */
 export interface NodePosition {
   id: string;
@@ -73,9 +83,34 @@ export interface SubgraphResult {
  */
 export class GraphVisualizer {
   private store: GraphStore;
+  private colorScheme: ColorScheme;
 
-  constructor(store: GraphStore) {
+  private static readonly defaultColorScheme: ColorScheme = {
+    nodeFill: '#lightblue',
+    nodeStroke: '#333333',
+    edgeStroke: '#666666',
+    labelColor: '#000000',
+    background: '#ffffff',
+    highlight: '#ff6600',
+  };
+
+  constructor(store: GraphStore, colorScheme?: ColorScheme) {
     this.store = store;
+    this.colorScheme = { ...GraphVisualizer.defaultColorScheme, ...colorScheme };
+  }
+
+  /**
+   * Get the current color scheme.
+   */
+  getColorScheme(): ColorScheme {
+    return { ...this.colorScheme };
+  }
+
+  /**
+   * Set the color scheme.
+   */
+  setColorScheme(scheme: ColorScheme): void {
+    this.colorScheme = { ...this.colorScheme, ...scheme };
   }
 
   /**
@@ -283,11 +318,12 @@ export class GraphVisualizer {
 
     const area = width * height;
     const k = Math.sqrt(area / nodes.length);
+    const minNodeDist = Math.min(width, height) / (nodes.length * 0.5 + 1); // Minimum distance between nodes
 
     for (let iter = 0; iter < iterations; iter++) {
       const temp = (1 - iter / iterations) * width / 4;
 
-      // Repulsive forces between all pairs
+      // Repulsive forces between all pairs (with collision detection)
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const a = positions.get(nodes[i].id)!;
@@ -298,7 +334,13 @@ export class GraphVisualizer {
           let dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 0.01) { dist = 0.01; dx = 0.01; dy = 0; }
 
-          const force = (repulsion * k * k) / (dist * dist);
+          // Strong repulsion when nodes are too close (collision avoidance)
+          let force: number;
+          if (dist < minNodeDist) {
+            force = (repulsion * k * k) / (dist * dist) * (minNodeDist / dist);
+          } else {
+            force = (repulsion * k * k) / (dist * dist);
+          }
           const fx = (dx / dist) * force;
           const fy = (dy / dist) * force;
 

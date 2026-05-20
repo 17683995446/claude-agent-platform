@@ -40,6 +40,29 @@ function generateEdgeId(): string {
   return `edge_${++edgeIdCounter}`;
 }
 
+/** Snapshot of graph state for transaction rollback */
+interface GraphSnapshot {
+  nodes: Map<string, GraphNode>;
+  edges: Map<string, GraphEdge>;
+  outAdjacency: Map<string, AdjacencyEntry[]>;
+  inAdjacency: Map<string, AdjacencyEntry[]>;
+  labelIndex: Map<string, Set<string>>;
+  edgeIdCounter: number;
+}
+
+/** Graph change event types */
+export type GraphChangeEventType = 'node_added' | 'node_removed' | 'edge_added' | 'edge_removed';
+
+/** Graph change event */
+export interface GraphChangeEvent {
+  type: GraphChangeEventType;
+  targetId: string;
+  data?: Record<string, unknown>;
+}
+
+/** Listener for graph change events */
+export type GraphChangeListener = (event: GraphChangeEvent) => void;
+
 /**
  * GraphStore provides core graph storage with nodes and edges.
  *
@@ -57,6 +80,40 @@ export class GraphStore {
   private outAdjacency: Map<string, AdjacencyEntry[]> = new Map();
   private inAdjacency: Map<string, AdjacencyEntry[]> = new Map();
   private labelIndex: Map<string, Set<string>> = new Map();
+  private transactionSnapshot: GraphSnapshot | null = null;
+  private inTransaction: boolean = false;
+  private listeners: Set<GraphChangeListener> = new Set();
+
+  /**
+   * Add a listener for graph change events.
+   * @param listener - Callback function for change events
+   * @returns Function to remove the listener
+   */
+  onChange(listener: GraphChangeListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Remove a listener for graph change events.
+   * @param listener - Callback function to remove
+   */
+  offChange(listener: GraphChangeListener): void {
+    this.listeners.delete(listener);
+  }
+
+  /**
+   * Emit a graph change event to all listeners.
+   */
+  private emitChange(event: GraphChangeEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Listener errors should not affect graph operations
+      }
+    }
+  }
 
   /**
    * Add a node to the graph.
@@ -67,7 +124,10 @@ export class GraphStore {
    */
   addNode(id: string, labels: string[] = [], properties: Record<string, unknown> = {}): void {
     if (this.nodes.has(id)) {
-      throw new Error(`Node with id '${id}' already exists`);
+      const existing = this.nodes.get(id)!;
+      existing.labels = labels;
+      existing.properties = { ...existing.properties, ...properties };
+      return;
     }
     const node: GraphNode = { id, labels, properties };
     this.nodes.set(id, node);
@@ -80,6 +140,8 @@ export class GraphStore {
       }
       this.labelIndex.get(label)!.add(id);
     }
+
+    this.emitChange({ type: 'node_added', targetId: id, data: { labels, properties } });
   }
 
   /**
@@ -155,6 +217,9 @@ export class GraphStore {
     this.nodes.delete(id);
     this.outAdjacency.delete(id);
     this.inAdjacency.delete(id);
+
+    this.emitChange({ type: 'node_removed', targetId: id });
+
     return true;
   }
 
@@ -182,6 +247,9 @@ export class GraphStore {
     }
 
     this.edges.delete(id);
+
+    this.emitChange({ type: 'edge_removed', targetId: id });
+
     return true;
   }
 
@@ -241,6 +309,49 @@ export class GraphStore {
   }
 
   /**
+   * Get the count of edges in a given direction (allowing duplicates).
+   * @param id - Node ID
+   * @param direction - Direction of edges to consider
+   * @returns Number of edges
+   */
+  getNeighborCount(id: string, direction: Direction = 'both'): number {
+    let count = 0;
+    if (direction === 'out' || direction === 'both') {
+      count += (this.outAdjacency.get(id) || []).length;
+    }
+    if (direction === 'in' || direction === 'both') {
+      count += (this.inAdjacency.get(id) || []).length;
+    }
+    return count;
+  }
+
+  /**
+   * Get neighboring nodes with multiplicity (count of edges from/to each neighbor).
+   * @param id - Node ID
+   * @param direction - Direction of edges to consider
+   * @returns Array of { nodeId, count } objects
+   */
+  getNeighborsWithMultiplicity(id: string, direction: Direction = 'both'): Array<{ nodeId: string; count: number }> {
+    const counts = new Map<string, number>();
+
+    if (direction === 'out' || direction === 'both') {
+      const outEdges = this.outAdjacency.get(id) || [];
+      for (const entry of outEdges) {
+        counts.set(entry.nodeId, (counts.get(entry.nodeId) || 0) + 1);
+      }
+    }
+
+    if (direction === 'in' || direction === 'both') {
+      const inEdges = this.inAdjacency.get(id) || [];
+      for (const entry of inEdges) {
+        counts.set(entry.nodeId, (counts.get(entry.nodeId) || 0) + 1);
+      }
+    }
+
+    return Array.from(counts.entries()).map(([nodeId, count]) => ({ nodeId, count }));
+  }
+
+  /**
    * Get the total number of nodes in the graph.
    */
   getNodeCount(): number {
@@ -295,6 +406,60 @@ export class GraphStore {
   }
 
   /**
+   * Begin a transaction. Takes a snapshot of the current state.
+   */
+  beginTransaction(): void {
+    if (this.inTransaction) {
+      throw new Error('Transaction already in progress');
+    }
+    this.transactionSnapshot = {
+      nodes: new Map(this.nodes),
+      edges: new Map(this.edges),
+      outAdjacency: new Map(Array.from(this.outAdjacency.entries()).map(([k, v]) => [k, [...v]])),
+      inAdjacency: new Map(Array.from(this.inAdjacency.entries()).map(([k, v]) => [k, [...v]])),
+      labelIndex: new Map(Array.from(this.labelIndex.entries()).map(([k, v]) => [k, new Set(v)])),
+      edgeIdCounter,
+    };
+    this.inTransaction = true;
+  }
+
+  /**
+   * Commit a transaction. Clears the snapshot.
+   */
+  commitTransaction(): void {
+    if (!this.inTransaction) {
+      throw new Error('No transaction in progress');
+    }
+    this.transactionSnapshot = null;
+    this.inTransaction = false;
+  }
+
+  /**
+   * Rollback a transaction. Restores the graph to the state at beginTransaction.
+   */
+  rollbackTransaction(): void {
+    if (!this.inTransaction || !this.transactionSnapshot) {
+      throw new Error('No transaction in progress');
+    }
+    const snap = this.transactionSnapshot;
+    this.nodes = snap.nodes;
+    this.edges = snap.edges;
+    this.outAdjacency = snap.outAdjacency;
+    this.inAdjacency = snap.inAdjacency;
+    this.labelIndex = snap.labelIndex;
+    edgeIdCounter = snap.edgeIdCounter;
+    this.transactionSnapshot = null;
+    this.inTransaction = false;
+  }
+
+  /**
+   * Check if a transaction is in progress.
+   */
+  isInTransaction(): boolean {
+    return this.inTransaction;
+  }
+
+  /**
    * Clear all nodes and edges from the graph.
    */
   clear(): void {
@@ -303,6 +468,63 @@ export class GraphStore {
     this.outAdjacency.clear();
     this.inAdjacency.clear();
     this.labelIndex.clear();
+  }
+
+  /**
+   * Add multiple nodes at once.
+   * @param nodeData - Array of { id, labels, properties } objects
+   * @returns Array of booleans indicating success for each node
+   */
+  addNodes(nodeData: Array<{ id: string; labels?: string[]; properties?: Record<string, unknown> }>): boolean[] {
+    return nodeData.map(n => {
+      try {
+        this.addNode(n.id, n.labels || [], n.properties || {});
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Add multiple edges at once.
+   * @param edgeData - Array of { from, to, type, properties } objects
+   * @returns Array of edge IDs (empty string for failed edges)
+   */
+  addEdges(edgeData: Array<{ from: string; to: string; type: string; properties?: Record<string, unknown> }>): string[] {
+    return edgeData.map(e => {
+      try {
+        return this.addEdge(e.from, e.to, e.type, e.properties || {});
+      } catch {
+        return '';
+      }
+    });
+  }
+
+  /**
+   * Remove multiple nodes at once.
+   * @param ids - Array of node IDs to remove
+   * @returns Number of nodes successfully removed
+   */
+  removeNodes(ids: string[]): number {
+    let count = 0;
+    for (const id of ids) {
+      if (this.removeNode(id)) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Remove multiple edges at once.
+   * @param ids - Array of edge IDs to remove
+   * @returns Number of edges successfully removed
+   */
+  removeEdges(ids: string[]): number {
+    let count = 0;
+    for (const id of ids) {
+      if (this.removeEdge(id)) count++;
+    }
+    return count;
   }
 
   /**

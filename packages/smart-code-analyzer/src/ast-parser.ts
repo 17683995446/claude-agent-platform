@@ -151,11 +151,76 @@ export class ASTParser {
     const lines = code.split("\n");
     const body: ASTNode[] = [];
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    // Track multi-line state
+    let inMultiLineComment = false;
+    let inMultiLineString: "double" | "single" | "template" | null = null;
+    let multiLineBuffer = "";
+    let multiLineStartLine = 0;
 
-      const node = this.parseLine(line, i);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Handle multi-line comment tracking
+      if (inMultiLineComment) {
+        multiLineBuffer += "\n" + line;
+        if (line.includes("*/")) {
+          inMultiLineComment = false;
+          // Don't parse comment blocks as code
+          multiLineBuffer = "";
+        }
+        continue;
+      }
+      if (line.includes("/*") && !line.includes("*/")) {
+        inMultiLineComment = true;
+        multiLineBuffer = line;
+        continue;
+      }
+
+      // Handle multi-line string tracking
+      if (inMultiLineString) {
+        multiLineBuffer += "\n" + line;
+        const closeChar = inMultiLineString === "double" ? '"' : inMultiLineString === "single" ? "'" : "`";
+        if (line.includes(closeChar)) {
+          inMultiLineString = null;
+          // The accumulated buffer may contain a complete statement
+          const trimmed = multiLineBuffer.trim();
+          if (trimmed) {
+            const node = this.parseLine(trimmed, multiLineStartLine);
+            if (node) body.push(node);
+          }
+          multiLineBuffer = "";
+        }
+        continue;
+      }
+
+      // Detect start of multi-line strings
+      const doubleQuoteCount = (line.match(/"/g) ?? []).length;
+      const singleQuoteCount = (line.match(/'/g) ?? []).length;
+      const backtickCount = (line.match(/`/g) ?? []).length;
+
+      if (doubleQuoteCount % 2 !== 0 && !inMultiLineString) {
+        inMultiLineString = "double";
+        multiLineBuffer = line;
+        multiLineStartLine = i;
+        continue;
+      }
+      if (singleQuoteCount % 2 !== 0 && !inMultiLineString) {
+        inMultiLineString = "single";
+        multiLineBuffer = line;
+        multiLineStartLine = i;
+        continue;
+      }
+      if (backtickCount % 2 !== 0 && !inMultiLineString) {
+        inMultiLineString = "template";
+        multiLineBuffer = line;
+        multiLineStartLine = i;
+        continue;
+      }
+
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const node = this.parseLine(trimmed, i);
       if (node) {
         body.push(node);
       }
@@ -250,46 +315,60 @@ export class ASTParser {
 
     // Import detection
     if (line.startsWith("import ")) {
-      return this.parseImport(line, range);
+      const node = this.parseImport(line, range);
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Export detection
     const isExported = line.startsWith("export ");
 
-    // Function detection
-    if (line.includes("function ") || line.includes("=>")) {
-      return this.parseFunction(line, range, isExported);
+    // Function detection (also handle optional chaining ?. which contains no space before ?)
+    if (line.includes("function ") || line.includes("=>") || /\?\.\s*\(/.test(line)) {
+      const node = this.parseFunction(line, range, isExported);
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Class detection
     if (line.includes("class ")) {
-      return this.parseClass(line, range, isExported);
+      const node = this.parseClass(line, range, isExported);
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Interface detection
     if (line.includes("interface ")) {
-      return this.parseInterface(line, range);
+      const node = this.parseInterface(line, range);
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Type alias detection
     if (line.includes("type ") && line.includes("=")) {
-      return this.parseTypeAlias(line, range);
+      const node = this.parseTypeAlias(line, range);
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Variable declaration
     if (line.startsWith("const ") || line.startsWith("let ") || line.startsWith("var ")) {
-      return {
+      const node: ASTNode = {
         type: "VariableDeclaration",
         kind: line.startsWith("const ") ? "const" : line.startsWith("let ") ? "let" : "var",
         range,
       };
+      (node as Record<string, unknown>).raw = line;
+      return node;
     }
 
     // Expression statement
-    return {
+    const node: ASTNode = {
       type: "ExpressionStatement",
       range,
     };
+    (node as Record<string, unknown>).raw = line;
+    return node;
   }
 
   private parseImport(line: string, range: SourceRange): ASTNode {
@@ -540,6 +619,38 @@ export class ASTParser {
     // Ternary adds to cognitive
     if (node.type === "ConditionalExpression") {
       metrics.cognitive += 1;
+    }
+
+    // Also scan for branching keywords in the node's raw text
+    // to handle cases where the parser doesn't create sub-nodes for each branch
+    const rawText = (node as Record<string, unknown>).raw as string | undefined;
+    if (rawText) {
+      const branchKeywords = [
+        /\bif\s*\(/g,
+        /\bfor\s*\(/g,
+        /\bfor\s*\.\./g,
+        /\bwhile\s*\(/g,
+        /\bdo\s*\{/g,
+        /\bcase\s+/g,
+        /\bcatch\s*\(/g,
+        /\?\?/g,
+        /\?\.\w/g,
+      ];
+      const logicalOps = [/&&/g, /\|\|/g];
+      for (const kw of branchKeywords) {
+        const matches = rawText.match(kw);
+        if (matches) {
+          metrics.cyclomatic += matches.length;
+          metrics.cognitive += matches.length * (1 + depth);
+        }
+      }
+      for (const op of logicalOps) {
+        const matches = rawText.match(op);
+        if (matches) {
+          metrics.cyclomatic += matches.length;
+          metrics.cognitive += matches.length * (1 + depth);
+        }
+      }
     }
 
     // Recurse into children

@@ -422,9 +422,33 @@ export class MutationTester {
     const lines = code.split("\n");
     if (mutation.lineNumber > 0 && mutation.lineNumber <= lines.length) {
       const lineIndex = mutation.lineNumber - 1;
-      lines[lineIndex] = lines[lineIndex].replace(mutation.original, mutation.replacement);
+      const mutatedLine = lines[lineIndex].replaceAll(mutation.original, mutation.replacement);
+      // Validate mutation produces parseable code (basic check)
+      if (this.isLineValid(mutatedLine)) {
+        lines[lineIndex] = mutatedLine;
+      }
     }
     return lines.join("\n");
+  }
+
+  /**
+   * Basic validation that a mutated line has balanced braces/parens/brackets.
+   */
+  private isLineValid(line: string): boolean {
+    const stack: string[] = [];
+    const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+    const openers = new Set(Object.keys(pairs));
+    const closers = new Set(Object.values(pairs));
+
+    for (const ch of line) {
+      if (openers.has(ch)) {
+        stack.push(ch);
+      } else if (closers.has(ch)) {
+        const last = stack.pop();
+        if (!last || pairs[last] !== ch) return false;
+      }
+    }
+    return stack.length === 0;
   }
 
   private deepClone<T>(obj: T): T {

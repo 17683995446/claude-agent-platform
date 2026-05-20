@@ -134,13 +134,18 @@ export class GraphImportExport {
     const nodesRows = this.store.getAllNodes().map(node => {
       const labels = node.labels.join(';');
       const props = JSON.stringify(node.properties);
-      return `${node.id},${labels},${props}`;
+      const safeId = this.escapeCsvField(node.id);
+      const safeLabels = this.escapeCsvField(labels);
+      return `${safeId},${safeLabels},${props}`;
     });
 
     const edgesHeader = 'from,to,type,properties';
     const edgesRows = this.store.getAllEdges().map(edge => {
       const props = JSON.stringify(edge.properties);
-      return `${edge.from},${edge.to},${edge.type},${props}`;
+      const safeFrom = this.escapeCsvField(edge.from);
+      const safeTo = this.escapeCsvField(edge.to);
+      const safeType = this.escapeCsvField(edge.type);
+      return `${safeFrom},${safeTo},${safeType},${props}`;
     });
 
     return {
@@ -523,6 +528,119 @@ export class GraphImportExport {
   }
 
   /**
+   * Export the graph in Turtle (Terse RDF Triple Language) format.
+   * @returns Turtle format string
+   */
+  exportTurtle(): string {
+    const lines: string[] = [];
+    lines.push('@prefix : <http://example.org/> .');
+    lines.push('');
+
+    // Export nodes as triples
+    for (const node of this.store.getAllNodes()) {
+      const subject = `:${this.escapeTurtleId(node.id)}`;
+      for (const label of node.labels) {
+        lines.push(`${subject} a :${this.escapeTurtleId(label)} .`);
+      }
+      for (const [key, value] of Object.entries(node.properties)) {
+        if (typeof value === 'string') {
+          lines.push(`${subject} :${this.escapeTurtleId(key)} "${this.escapeTurtleString(value)}" .`);
+        } else if (typeof value === 'number') {
+          lines.push(`${subject} :${this.escapeTurtleId(key)} ${value} .`);
+        } else if (typeof value === 'boolean') {
+          lines.push(`${subject} :${this.escapeTurtleId(key)} ${value} .`);
+        } else {
+          lines.push(`${subject} :${this.escapeTurtleId(key)} "${JSON.stringify(value)}" .`);
+        }
+      }
+    }
+
+    // Export edges as triples
+    for (const edge of this.store.getAllEdges()) {
+      const subject = `:${this.escapeTurtleId(edge.from)}`;
+      const predicate = `:${this.escapeTurtleId(edge.type)}`;
+      const object = `:${this.escapeTurtleId(edge.to)}`;
+      lines.push(`${subject} ${predicate} ${object} .`);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Import graph from Turtle format string.
+   * @param data - Turtle format string
+   */
+  importTurtle(data: string): void {
+    // Simple Turtle parser for basic triples
+    const prefixRegex = /@prefix\s+(\w+)\s*:\s*<[^>]+>\s*\./g;
+    // Remove prefix declarations
+    const cleaned = data.replace(prefixRegex, '');
+
+    // Parse triple statements: subject predicate object .
+    const tripleRegex = /:(\S+)\s+:(\S+)\s+[:<"]([^"]*)["\s]*\./g;
+    let match;
+
+    while ((match = tripleRegex.exec(cleaned)) !== null) {
+      const subject = match[1];
+      const predicate = match[2];
+      let object = match[3].trim();
+
+      // Handle quoted strings
+      if (object.startsWith('"') && object.endsWith('"')) {
+        object = object.slice(1, -1);
+      }
+
+      // Ensure nodes exist
+      try {
+        this.store.addNode(subject);
+      } catch {
+        // Already exists
+      }
+
+      if (predicate === 'a') {
+        // rdf:type
+        const node = this.store.getNode(subject);
+        if (node) {
+          this.store.removeNode(subject);
+          this.store.addNode(subject, [...node.labels, object], node.properties);
+        }
+      } else {
+        // Check if object is a node reference or a literal property
+        const objectNode = this.store.getNode(object);
+        if (objectNode) {
+          // It's a node reference - create an edge
+          try {
+            this.store.addEdge(subject, object, predicate);
+          } catch {
+            // Edge may already exist
+          }
+        } else {
+          // It's a literal property
+          const node = this.store.getNode(subject);
+          if (node) {
+            this.store.removeNode(subject);
+            this.store.addNode(subject, node.labels, { ...node.properties, [predicate]: object });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Escape an identifier for Turtle format.
+   */
+  private escapeTurtleId(id: string): string {
+    return id.replace(/[^a-zA-Z0-9_]/g, '_');
+  }
+
+  /**
+   * Escape a string value for Turtle format.
+   */
+  private escapeTurtleString(str: string): string {
+    return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+  }
+
+  /**
    * Parse a CSV line handling quoted fields.
    */
   private parseCSVLine(line: string): string[] {
@@ -544,6 +662,16 @@ export class GraphImportExport {
     result.push(current.trim());
 
     return result;
+  }
+
+  /**
+   * Escape a field for CSV output.
+   */
+  private escapeCsvField(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
   }
 
   /**

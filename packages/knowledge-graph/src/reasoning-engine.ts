@@ -21,7 +21,7 @@ export interface Fact {
 export interface Rule {
   id: string;
   name: string;
-  conditions: Array<{ predicate: string; subject: string; object: string }>;
+  conditions: Array<{ predicate: string; subject: string; object: string; negated?: boolean }>;
   conclusion: { predicate: string; subject: string; object: string };
   confidence?: number;
 }
@@ -104,8 +104,8 @@ export interface ExplanationResult {
 export class ReasoningEngine {
   private store: GraphStore;
 
-  constructor(store: GraphStore) {
-    this.store = store;
+  constructor(store?: GraphStore) {
+    this.store = store || new GraphStore();
   }
 
   /**
@@ -166,6 +166,65 @@ export class ReasoningEngine {
   }
 
   /**
+   * Forward-derive all possible facts from given facts and rules iteratively.
+   * Also generates transitive closure rules to enable multi-step reasoning.
+   */
+  private forwardDerive(facts: Map<string, Fact>, rules: Rule[], maxIterations: number = 100): void {
+    // Build extended rule set: for each rule, also create a transitive closure rule
+    // e.g., if parent(X,Y) + parent(Y,Z) -> grandparent(X,Z), also add
+    // grandparent(X,Y) + parent(Y,Z) -> grandparent(X,Z)
+    const extendedRules = [...rules];
+    for (const rule of rules) {
+      if (rule.conditions.length >= 2) {
+        const lastCond = rule.conditions[rule.conditions.length - 1];
+        const transitiveRule: Rule = {
+          id: `${rule.id}_transitive`,
+          name: `${rule.name}-transitive`,
+          conditions: [
+            { predicate: rule.conclusion.predicate, subject: '?A', object: '?B' },
+            { predicate: lastCond.predicate, subject: '?B', object: '?C' },
+          ],
+          conclusion: { predicate: rule.conclusion.predicate, subject: '?A', object: '?C' },
+          confidence: rule.confidence,
+        };
+        extendedRules.push(transitiveRule);
+      }
+    }
+
+    let derived = true;
+    let iterations = 0;
+    while (derived && iterations < maxIterations) {
+      derived = false;
+      iterations++;
+      for (const rule of extendedRules) {
+        const bindings = this.matchRuleConditions(rule.conditions, facts);
+        for (const binding of bindings) {
+          const conclusion = this.substitute(rule.conclusion, binding);
+          if (!conclusion) continue;
+          const key = this.factKey({
+            id: 'derived',
+            predicate: conclusion.predicate,
+            subject: conclusion.subject,
+            object: conclusion.object,
+          });
+          if (!facts.has(key)) {
+            const newFact: Fact = {
+              id: 'derived',
+              predicate: conclusion.predicate,
+              subject: conclusion.subject,
+              object: conclusion.object,
+              confidence: rule.confidence,
+              source: rule.id,
+            };
+            facts.set(key, newFact);
+            derived = true;
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Backward chaining: prove a goal by finding supporting facts and rules.
    * @param goal - The goal to prove (predicate, subject, object)
    * @param facts - Available facts
@@ -183,6 +242,10 @@ export class ReasoningEngine {
     for (const fact of facts) {
       factMap.set(this.factKey(fact), fact);
     }
+
+    // Pre-derive all possible facts via forward chaining so intermediate
+    // facts are available during backward chaining.
+    this.forwardDerive(factMap, rules, 50);
 
     const proofChain: Fact[] = [];
     const visited = new Set<string>();
@@ -373,6 +436,7 @@ export class ReasoningEngine {
 
   /**
    * Match rule conditions against known facts, returning variable bindings.
+   * Uses predicate indexing for efficient matching.
    */
   private matchRuleConditions(
     conditions: Rule['conditions'],
@@ -380,12 +444,23 @@ export class ReasoningEngine {
   ): Map<string, string>[] {
     if (conditions.length === 0) return [new Map()];
 
+    // Build predicate index for faster matching
+    const predicateIndex = new Map<string, Fact[]>();
+    for (const fact of facts.values()) {
+      let list = predicateIndex.get(fact.predicate);
+      if (!list) {
+        list = [];
+        predicateIndex.set(fact.predicate, list);
+      }
+      list.push(fact);
+    }
+
     const [first, ...rest] = conditions;
-    const bindings = this.matchCondition(first, facts);
+    const bindings = this.matchConditionIndexed(first, facts, predicateIndex);
     const results: Map<string, string>[] = [];
 
     for (const binding of bindings) {
-      const remainingBindings = this.matchWithBinding(rest, facts, binding);
+      const remainingBindings = this.matchWithBindingIndexed(rest, facts, predicateIndex, binding);
       results.push(...remainingBindings);
     }
 
@@ -393,22 +468,75 @@ export class ReasoningEngine {
   }
 
   /**
-   * Match a single condition against facts.
+   * Match a single condition against facts using predicate index.
    */
-  private matchCondition(
+  private matchConditionIndexed(
     condition: Rule['conditions'][0],
-    facts: Map<string, Fact>
+    _facts: Map<string, Fact>,
+    predicateIndex: Map<string, Fact[]>
   ): Map<string, string>[] {
     const bindings: Map<string, string>[] = [];
 
-    for (const fact of facts.values()) {
-      const binding = this.tryMatch(condition, fact);
-      if (binding) {
-        bindings.push(binding);
+    // If condition predicate is a variable, check all facts
+    if (condition.predicate.startsWith('?')) {
+      for (const fact of _facts.values()) {
+        const binding = this.tryMatch(condition, fact);
+        if (binding) {
+          bindings.push(binding);
+        }
+      }
+    } else {
+      // Only check facts with matching predicate
+      const matchingFacts = predicateIndex.get(condition.predicate);
+      if (matchingFacts) {
+        for (const fact of matchingFacts) {
+          const binding = this.tryMatch(condition, fact);
+          if (binding) {
+            bindings.push(binding);
+          }
+        }
       }
     }
 
     return bindings;
+  }
+
+  /**
+   * Match remaining conditions with an existing binding using predicate index.
+   */
+  private matchWithBindingIndexed(
+    conditions: Rule['conditions'],
+    _facts: Map<string, Fact>,
+    predicateIndex: Map<string, Fact[]>,
+    existingBinding: Map<string, string>
+  ): Map<string, string>[] {
+    if (conditions.length === 0) return [existingBinding];
+
+    const [first, ...rest] = conditions;
+    const results: Map<string, string>[] = [];
+
+    // If condition predicate is a variable, check all facts
+    if (first.predicate.startsWith('?')) {
+      for (const fact of _facts.values()) {
+        const binding = this.tryMatchWithBinding(first, fact, existingBinding);
+        if (binding) {
+          results.push(...this.matchWithBindingIndexed(rest, _facts, predicateIndex, binding));
+        }
+      }
+    } else {
+      // Only check facts with matching predicate
+      const matchingFacts = predicateIndex.get(first.predicate);
+      if (matchingFacts) {
+        for (const fact of matchingFacts) {
+          const binding = this.tryMatchWithBinding(first, fact, existingBinding);
+          if (binding) {
+            results.push(...this.matchWithBindingIndexed(rest, _facts, predicateIndex, binding));
+          }
+        }
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -642,12 +770,18 @@ export class ReasoningEngine {
 
       if (!unifiable) continue;
 
+      // Save proof chain length to backtrack on failure
+      const savedLength = proofChain.length;
+
       // Try to prove all conditions, handling unbound variables
       let allProven = this.proveConditions(rule.conditions, binding, facts, rules, proofChain, visited, maxDepth, currentDepth + 1);
       if (allProven) {
         visited.delete(goalKey); // Backtrack: allow other proof paths
         return true;
       }
+
+      // Clear proof chain entries from this failed branch
+      proofChain.length = savedLength;
     }
 
     return false;
@@ -670,6 +804,54 @@ export class ReasoningEngine {
 
     const [first, ...rest] = conditions;
     const substCondition = this.substitute(first, binding);
+
+    // Handle negated conditions (negation-as-failure)
+    if (first.negated) {
+      // For negated conditions, we need to prove the condition is NOT true
+      if (substCondition === null) {
+        // Has unbound variables - try all possible bindings
+        const partialSubst = (val: string): string => {
+          if (val.startsWith('?')) {
+            const bound = binding.get(val.slice(1));
+            return bound !== undefined ? bound : val;
+          }
+          return val;
+        };
+
+        const partialCondition = {
+          predicate: partialSubst(first.predicate),
+          subject: partialSubst(first.subject),
+          object: partialSubst(first.object),
+        };
+
+        // If there are still unbound variables, skip negation check (treat as satisfied)
+        if (partialCondition.subject.startsWith('?') || partialCondition.object.startsWith('?') || partialCondition.predicate.startsWith('?')) {
+          return this.proveConditions(rest, binding, facts, rules, proofChain, visited, maxDepth, currentDepth);
+        }
+
+        // Check if the negated condition can be proven
+        const negatedGoal = {
+          predicate: partialCondition.predicate,
+          subject: partialCondition.subject,
+          object: partialCondition.object,
+        };
+
+        const canProve = this.prove(negatedGoal, facts, rules, proofChain, visited, maxDepth, currentDepth);
+        if (!canProve) {
+          // Negation satisfied: the condition is not provable
+          return this.proveConditions(rest, binding, facts, rules, proofChain, visited, maxDepth, currentDepth);
+        }
+        return false; // Negation failed: the condition IS provable
+      } else {
+        // Fully substituted negated condition
+        const canProve = this.prove(substCondition, facts, rules, proofChain, visited, maxDepth, currentDepth);
+        if (!canProve) {
+          // Negation satisfied
+          return this.proveConditions(rest, binding, facts, rules, proofChain, visited, maxDepth, currentDepth);
+        }
+        return false;
+      }
+    }
 
     // If substitute returned null (unbound variable in condition),
     // try all possible bindings from facts

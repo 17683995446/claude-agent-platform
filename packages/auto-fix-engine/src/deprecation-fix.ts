@@ -23,6 +23,8 @@ export interface DeprecationInfo {
   deprecatedIn?: string;
   /** Version in which the API will be removed */
   removalIn?: string;
+  /** Whether version checking should be relaxed (allow minor version differences) */
+  relaxedVersionCheck?: boolean;
 }
 
 /** A detected deprecation usage */
@@ -60,6 +62,7 @@ export interface MigrationStep {
 export class DeprecationFix {
   /**
    * Detect deprecated API usage in the given code.
+   * Handles regular APIs, type aliases, and JSX elements.
    * @param code - The source code to scan
    * @param deprecationMap - Map of deprecated patterns to their info
    * @returns Array of detected deprecation usages
@@ -82,11 +85,44 @@ export class DeprecationFix {
             lineContent: line,
             info,
           });
+          continue;
+        }
+
+        // Check for deprecated type aliases (e.g., type OldType = ... or : OldType)
+        const typeAliasPattern = new RegExp(`(?:type\\s+|:\\s*|extends\\s+)${this.escapeRegExp(pattern)}\\b`);
+        if (typeAliasPattern.test(line)) {
+          usages.push({
+            pattern,
+            line: i + 1,
+            column: (line.match(typeAliasPattern)?.index ?? 0) + 1,
+            lineContent: line,
+            info,
+          });
+          continue;
+        }
+
+        // Check for deprecated JSX elements (e.g., <DeprecatedComponent />)
+        const jsxPattern = new RegExp(`<${this.escapeRegExp(pattern)}[\\s/>]`);
+        if (jsxPattern.test(line)) {
+          usages.push({
+            pattern,
+            line: i + 1,
+            column: (line.match(jsxPattern)?.index ?? 0) + 1,
+            lineContent: line,
+            info,
+          });
         }
       }
     }
 
     return usages;
+  }
+
+  /**
+   * Escape special regex characters in a string.
+   */
+  private escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
@@ -135,6 +171,28 @@ export class DeprecationFix {
               });
             }
           }
+
+          // Try to update import statements if the replacement comes from a different module
+          // Check if the replacement looks like it needs a different import
+          const replacementModule = info.alternatives.length > 0 ? this.inferModule(info.alternatives[0]) : null;
+          if (replacementModule) {
+            const importPattern = new RegExp(`import\\s+.*?\\b${this.escapeRegExp(pattern)}\\b.*?from\\s+['"][^'"]+['"]`, 'g');
+            const importMatch = currentCode.match(importPattern);
+            if (importMatch) {
+              // Check if the replacement module is already imported
+              if (!currentCode.includes(`from '${replacementModule}'`)) {
+                const newImport = `import { ${info.replacement} } from '${replacementModule}';`;
+                currentCode = newImport + '\n' + currentCode;
+                changes.push({
+                  description: `Added import for replacement API from '${replacementModule}'`,
+                  original: '',
+                  replacement: newImport,
+                  line: 1,
+                  column: 1,
+                });
+              }
+            }
+          }
         }
       }
     }
@@ -149,18 +207,41 @@ export class DeprecationFix {
   }
 
   /**
+   * Infer module name from an API string (e.g., 'module.func' -> 'module').
+   */
+  private inferModule(api: string): string | null {
+    const dotIndex = api.indexOf('.');
+    if (dotIndex > 0) {
+      return api.slice(0, dotIndex);
+    }
+    return null;
+  }
+
+  /**
    * Generate a migration plan for transitioning away from deprecated APIs.
+   * Uses relaxed version checking by default.
    * @param code - The source code
    * @param deprecationMap - Map of deprecated patterns to their info
+   * @param currentVersion - The current project version (for version range checking)
    * @returns Array of migration steps
    */
-  generateMigrationPlan(code: string, deprecationMap: DeprecationMap): MigrationStep[] {
+  generateMigrationPlan(code: string, deprecationMap: DeprecationMap, currentVersion?: string): MigrationStep[] {
     const steps: MigrationStep[] = [];
 
     for (const [pattern, info] of Object.entries(deprecationMap)) {
       // Count occurrences
       const occurrences = code.split(pattern).length - 1;
       if (occurrences === 0) continue;
+
+      // Check version constraints with relaxed checking
+      if (info.deprecatedIn && currentVersion && !info.relaxedVersionCheck) {
+        const deprecatedMajor = parseInt(info.deprecatedIn.split('.')[0], 10);
+        const currentMajor = parseInt(currentVersion.split('.')[0], 10);
+        // Only skip if current version is significantly older (more than 1 major version)
+        if (deprecatedMajor && currentMajor && deprecatedMajor - currentMajor > 1) {
+          continue;
+        }
+      }
 
       steps.push({
         description: info.description,

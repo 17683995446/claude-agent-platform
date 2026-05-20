@@ -211,11 +211,20 @@ export class Precomputer {
     // Prevent concurrent computation
     if (this.computing.has(name)) {
       // Wait for existing computation
+      let waited = 0;
       while (this.computing.has(name)) {
         await new Promise((resolve) => setTimeout(resolve, 10));
+        waited += 10;
+        if (waited > this.options.computeTimeout) {
+          throw new Error(`Precompute task "${name}" timed out waiting for concurrent computation`);
+        }
       }
       const cached = this.cache.get(name);
-      return cached!.value as T;
+      if (cached) {
+        return cached.value as T;
+      }
+      // Computation failed, throw error
+      throw new Error(`Precompute task "${name}" computation failed`);
     }
 
     this.computing.add(name);
