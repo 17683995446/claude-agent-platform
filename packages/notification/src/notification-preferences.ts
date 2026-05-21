@@ -130,12 +130,12 @@ export class NotificationPreferences {
     const currentHour = now.getHours();
     const { startHour, endHour } = prefs.quietHours;
 
-    if (startHour > endHour) {
+    if (startHour === endHour) {
+      // 24-hour quiet hours (e.g., 0-0 or 23-23)
+      return true;
+    } else if (startHour > endHour) {
       // Spans midnight (e.g., 22:00 - 08:00)
       return currentHour >= startHour || currentHour < endHour;
-    } else if (startHour === 0 && endHour === 23) {
-      // Full day quiet hours
-      return true;
     } else {
       // Same day range (e.g., 12:00 - 14:00), endHour is exclusive
       return currentHour >= startHour && currentHour < endHour;

@@ -163,8 +163,12 @@ export class JobScheduler {
     const job = this.jobs.get(jobId);
     if (!job) return false;
     if (job.timer) {
-      clearTimeout(job.timer);
-      clearInterval(job.timer);
+      if (job.intervalMs) {
+        clearInterval(job.timer);
+      } else {
+        clearTimeout(job.timer);
+      }
+      job.timer = undefined;
     }
     this.jobs.delete(jobId);
     return true;
@@ -208,8 +212,11 @@ export class JobScheduler {
     }
     for (const job of this.jobs.values()) {
       if (job.timer) {
-        clearTimeout(job.timer);
-        clearInterval(job.timer);
+        if (job.intervalMs) {
+          clearInterval(job.timer);
+        } else {
+          clearTimeout(job.timer);
+        }
         job.timer = undefined;
       }
     }

@@ -62,6 +62,7 @@ export interface BatchFilter {
 export class BatchScheduler {
   private batches: Map<string, BatchJob> = new Map();
   private idCounter: number = 0;
+  private completedTaskIds: Map<string, Set<string>> = new Map();
 
   scheduleBatch(tasks: BatchTask[], options?: BatchOptions): BatchJob {
     const id = `batch-${++this.idCounter}`;
@@ -164,6 +165,15 @@ export class BatchScheduler {
     const taskExists = batch.tasks.some((t) => t.id === taskId);
     if (!taskExists) return false;
 
+    // Guard against duplicate completion
+    let completedIds = this.completedTaskIds.get(batchId);
+    if (!completedIds) {
+      completedIds = new Set();
+      this.completedTaskIds.set(batchId, completedIds);
+    }
+    if (completedIds.has(taskId)) return false;
+    completedIds.add(taskId);
+
     batch.completedTasks++;
     batch.progress = batch.totalTasks > 0 ? (batch.completedTasks / batch.totalTasks) * 100 : 0;
 
@@ -181,6 +191,15 @@ export class BatchScheduler {
 
     const taskExists = batch.tasks.some((t) => t.id === taskId);
     if (!taskExists) return false;
+
+    // Guard against duplicate failure
+    let completedIds = this.completedTaskIds.get(batchId);
+    if (!completedIds) {
+      completedIds = new Set();
+      this.completedTaskIds.set(batchId, completedIds);
+    }
+    if (completedIds.has(taskId)) return false;
+    completedIds.add(taskId);
 
     batch.failedTasks++;
     batch.progress = batch.totalTasks > 0

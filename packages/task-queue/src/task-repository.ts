@@ -27,11 +27,11 @@ export class TaskRepository {
     return Array.from(this.tasks.values())
       .filter((t) => {
         if (t.status !== 'pending') return false;
+        // Task past deadline is not due
+        if (t.deadline && t.deadline < now) return false;
+        // Task with delay must have delay elapsed
         if (t.delay) {
           return t.createdAt + t.delay <= now;
-        }
-        if (t.deadline) {
-          return t.deadline >= now;
         }
         return true;
       })

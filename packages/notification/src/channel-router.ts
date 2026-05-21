@@ -75,7 +75,8 @@ export class ChannelRouter {
   checkChannelAvailability(channel: string): boolean {
     const health = this.channelHealth.get(channel);
     if (!health) return true; // Assume available if no health data
-    return health.available && health.failureCount < 5;
+    if (!health.available) return false;
+    return health.failureCount < 5;
   }
 
   setFailover(channel: string, fallback: string): void {

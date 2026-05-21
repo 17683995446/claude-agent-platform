@@ -150,13 +150,13 @@ export class WorkloadBalancer {
   }
 
   private leastConnectionsSelect(workers: WorkerState[]): WorkerInfo {
-    workers.sort((a, b) => a.info.activeConnections - b.info.activeConnections);
-    return workers[0].info;
+    const sorted = [...workers].sort((a, b) => a.info.activeConnections - b.info.activeConnections);
+    return sorted[0].info;
   }
 
   private leastResponseTimeSelect(workers: WorkerState[]): WorkerInfo {
-    workers.sort((a, b) => a.info.avgResponseTime - b.info.avgResponseTime);
-    return workers[0].info;
+    const sorted = [...workers].sort((a, b) => a.info.avgResponseTime - b.info.avgResponseTime);
+    return sorted[0].info;
   }
 
   private consistentHashSelect(workers: WorkerState[], taskId: string): WorkerInfo {
@@ -170,8 +170,8 @@ export class WorkloadBalancer {
 
   private powerOfTwoChoicesSelect(workers: WorkerState[]): WorkerInfo {
     if (workers.length <= 2) {
-      workers.sort((a, b) => a.info.currentLoad - b.info.currentLoad);
-      return workers[0].info;
+      const sorted = [...workers].sort((a, b) => a.info.currentLoad - b.info.currentLoad);
+      return sorted[0].info;
     }
     const i1 = Math.floor(Math.random() * workers.length);
     let i2 = Math.floor(Math.random() * workers.length);

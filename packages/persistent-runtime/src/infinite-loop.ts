@@ -156,8 +156,10 @@ export class InfiniteLoop {
       const result = this.iterationFn?.();
       if (result && typeof result === 'object' && 'then' in result) {
         result.then(() => {
+          if (this.consecutiveErrors > 0) {
+            this.onRecovery?.(currentIteration);
+          }
           this.consecutiveErrors = 0;
-          this.onRecovery?.(currentIteration);
           this.finalizeIteration(currentIteration);
         }).catch((error: Error) => {
           this.consecutiveErrors++;
@@ -174,8 +176,10 @@ export class InfiniteLoop {
         });
         return;
       }
+      if (this.consecutiveErrors > 0) {
+        this.onRecovery?.(currentIteration);
+      }
       this.consecutiveErrors = 0;
-      this.onRecovery?.(currentIteration);
     } catch (error) {
       this.consecutiveErrors++;
       this.onError?.(error as Error, currentIteration);

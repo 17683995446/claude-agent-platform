@@ -101,7 +101,7 @@ export class CronEngine {
     for (const job of this.jobs.values()) {
       if (job.nextRun && job.nextRun <= currentTime) {
         // Check end date
-        if (job.options.endDate && job.nextRun > job.options.endDate) {
+        if (job.options.endDate && job.nextRun >= job.options.endDate) {
           continue;
         }
 

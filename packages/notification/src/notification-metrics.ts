@@ -7,6 +7,7 @@ export interface DeliveryResult {
   timestamp: number;
   latencyMs: number;
   userId?: string;
+  notificationType?: string;
   error?: string;
 }
 
@@ -147,6 +148,9 @@ export class NotificationMetrics {
 
     for (const d of userDeliveries) {
       stats.byChannel[d.channel] = (stats.byChannel[d.channel] || 0) + 1;
+      if (d.notificationType) {
+        stats.byType[d.notificationType] = (stats.byType[d.notificationType] || 0) + 1;
+      }
     }
 
     return stats;

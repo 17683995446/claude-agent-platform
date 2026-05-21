@@ -157,9 +157,14 @@ export class DigestBuilder {
   }
 
   private applyRules(notifications: DigestNotification[]): DigestNotification[] {
-    let filtered = [...notifications];
+    if (this.rules.length === 0) return [...notifications];
+
+    // Each rule independently filters; results are unioned (OR logic)
+    const resultSets: Set<DigestNotification>[] = [];
 
     for (const rule of this.rules) {
+      let filtered = [...notifications];
+
       if (rule.includeTypes) {
         filtered = filtered.filter(n => rule.includeTypes!.includes(n.type));
       }
@@ -172,9 +177,19 @@ export class DigestBuilder {
       if (rule.excludeCategories) {
         filtered = filtered.filter(n => !rule.excludeCategories!.includes(n.category || 'general'));
       }
+
+      resultSets.push(new Set(filtered));
     }
 
-    return filtered;
+    // Union of all rule results
+    const unionSet = new Set<DigestNotification>();
+    for (const set of resultSets) {
+      for (const item of set) {
+        unionSet.add(item);
+      }
+    }
+
+    return Array.from(unionSet);
   }
 
   private buildSummary(notifications: DigestNotification[]): DigestSummary {

@@ -50,7 +50,7 @@ export class RateLimiter {
         // Manually calculate tokens based on time since acquire
         const now = Date.now();
         const elapsed = (now - acquireTime) / 1000;
-        const currentTokens = Math.min(this.burst, (count - needed) + elapsed * this.rate);
+        const currentTokens = Math.min(this.burst, elapsed * this.rate);
 
         if (currentTokens >= count - 1e-9) {
           // Update internal state

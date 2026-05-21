@@ -133,19 +133,21 @@ export class EnhancedEventBus {
   private dispatchEvent(event: string, data: unknown): void {
     // Exact match listeners
     const handlers = this.listeners.get(event) || [];
-    const toRemove: number[] = [];
+    const toRemove: Subscription[] = [];
 
-    for (let i = 0; i < handlers.length; i++) {
-      const sub = handlers[i];
+    for (const sub of handlers) {
       sub.handler(data, event);
       if (sub.once) {
-        toRemove.push(i);
+        toRemove.push(sub);
       }
     }
 
     // Remove once listeners
-    for (let i = toRemove.length - 1; i >= 0; i--) {
-      handlers.splice(toRemove[i], 1);
+    for (const sub of toRemove) {
+      const idx = handlers.indexOf(sub);
+      if (idx !== -1) {
+        handlers.splice(idx, 1);
+      }
     }
     if (handlers.length === 0) {
       this.listeners.delete(event);
@@ -153,8 +155,23 @@ export class EnhancedEventBus {
 
     // Wildcard listeners
     const wildcardHandlers = this.getWildcardHandlers(event);
+    const wildcardToRemove: Subscription[] = [];
     for (const sub of wildcardHandlers) {
       sub.handler(data, event);
+      if (sub.once) {
+        wildcardToRemove.push(sub);
+      }
+    }
+
+    // Remove wildcard once listeners
+    for (const sub of wildcardToRemove) {
+      for (const [, handlers] of this.listeners) {
+        const idx = handlers.indexOf(sub);
+        if (idx !== -1) {
+          handlers.splice(idx, 1);
+          break;
+        }
+      }
     }
   }
 
@@ -190,6 +207,7 @@ export class EnhancedEventBus {
 
     for (let i = 0; i < patternParts.length; i++) {
       const p = patternParts[i];
+      if (p === '**') return true; // ** matches everything remaining
       if (p !== '*' && p !== eventParts[i]) return false;
     }
 

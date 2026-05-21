@@ -95,7 +95,7 @@ export class DeadlineManager {
 
     const currentTime = now ?? new Date();
     // Check if already overdue
-    if (entry.deadline.getTime() < currentTime.getTime()) {
+    if (entry.deadline.getTime() <= currentTime.getTime()) {
       return false; // Cannot extend overdue deadlines
     }
 

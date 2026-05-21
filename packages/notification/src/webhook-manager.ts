@@ -137,6 +137,25 @@ export class WebhookManager {
     };
     this.deliveries.set(deliveryId, status);
 
+    // Fast-fail for invalid URLs (no point retrying)
+    if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+      const failResult: DeliveryResult = {
+        webhookId,
+        url: config.url,
+        event,
+        success: false,
+        statusCode: 0,
+        timestamp: Date.now(),
+        attempt: 1,
+        error: `Invalid URL protocol: ${config.url}`,
+        duration: 0,
+      };
+      status.attempts.push(failResult);
+      status.lastAttempt = Date.now();
+      status.completed = true;
+      return failResult;
+    }
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const start = Date.now();
       try {

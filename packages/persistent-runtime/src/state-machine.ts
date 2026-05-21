@@ -147,10 +147,19 @@ export class RuntimeStateMachine {
   }
 
   loadState(persisted: PersistedState): void {
+    // Clear all existing timers to prevent stale timeout callbacks
+    for (const timer of this.stateTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.stateTimers.clear();
+
     this.currentState = persisted.currentState;
     this.subState = persisted.subState;
     this.history = persisted.history;
     this.stateHistory = [{ state: persisted.currentState, enteredAt: persisted.timestamp }];
+
+    // Set up timer for the restored state if applicable
+    this.enterState(persisted.currentState);
   }
 
   destroy(): void {

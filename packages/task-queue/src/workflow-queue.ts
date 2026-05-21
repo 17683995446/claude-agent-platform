@@ -102,6 +102,7 @@ export class WorkflowQueue {
     let lastError: string | undefined;
     let success = false;
     let result: unknown;
+    const stepStartTime = Date.now();
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -138,7 +139,7 @@ export class WorkflowQueue {
       success,
       result: success ? result : undefined,
       error: success ? undefined : lastError,
-      duration: 0,
+      duration: Date.now() - stepStartTime,
     };
 
     instance.history.push(stepResult);

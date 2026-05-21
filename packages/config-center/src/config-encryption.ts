@@ -72,7 +72,15 @@ export class ConfigEncryption {
     combined.set(iv, 0);
     combined.set(new Uint8Array(encrypted), iv.length);
 
-    return ENCRYPTED_PREFIX + btoa(String.fromCharCode(...combined));
+    // Use chunked approach to avoid stack overflow with String.fromCharCode spread
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < combined.length; i += chunkSize) {
+      const chunk = combined.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return ENCRYPTED_PREFIX + btoa(binary);
   }
 
   /**

@@ -108,7 +108,7 @@ export class ResourceGuard {
       grantedAt: Date.now(),
     };
     this.reservations.set(id, reservation);
-    if (resources.memory) {
+    if (resources.memory && resources.memory > 0) {
       this.reservedMemory += resources.memory;
     }
     return reservation;

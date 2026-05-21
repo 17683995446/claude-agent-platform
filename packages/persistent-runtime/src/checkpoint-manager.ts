@@ -56,6 +56,7 @@ export class CheckpointManager {
   private lastStateHash = '';
   private currentIteration = 0;
   private lastCheckpointId: string | undefined;
+  private lastCheckpointDataSize = 0;
   private onCheckpointCreated?: (checkpoint: Checkpoint) => void;
 
   constructor(options?: {
@@ -99,6 +100,7 @@ export class CheckpointManager {
     this.lastCheckpointId = id;
     this.lastCheckpointTime = Date.now();
     this.lastCheckpointIteration = this.currentIteration;
+    this.lastCheckpointDataSize = size;
 
     this.enforceRetention();
     this.onCheckpointCreated?.(checkpoint);
@@ -203,7 +205,7 @@ export class CheckpointManager {
     if (state !== undefined && this.trigger.sizeThreshold > 0) {
       const serialized = JSON.stringify(state);
       const size = new TextEncoder().encode(serialized).length;
-      const diff = Math.abs(size - new TextEncoder().encode(this.lastStateHash).length);
+      const diff = Math.abs(size - this.lastCheckpointDataSize);
       if (diff >= this.trigger.sizeThreshold) return true;
     }
 
@@ -274,15 +276,16 @@ export class CheckpointManager {
   private safeStringify(data: unknown): string {
     const seen = new WeakSet();
     try {
-      return JSON.stringify(data, (_key, value) => {
+      const result = JSON.stringify(data, (_key, value) => {
         if (typeof value === 'object' && value !== null) {
           if (seen.has(value)) return '[Circular]';
           seen.add(value);
         }
         return value;
       });
+      return result ?? JSON.stringify(String(data)) ?? 'null';
     } catch {
-      return JSON.stringify(String(data));
+      return JSON.stringify(String(data)) ?? 'null';
     }
   }
 }

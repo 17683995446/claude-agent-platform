@@ -88,14 +88,16 @@ export class ConfigValidator {
     if (resolvedSchema.type && resolvedSchema.type !== 'any') {
       const typeError = this.checkType(path, finalValue, resolvedSchema.type);
       if (typeError) {
-        errors.push(typeError);
-        // Try coercion
+        // Try coercion first
         if (resolvedSchema.coerce) {
           const coerced = this.coerceValue(finalValue, resolvedSchema.type);
           if (coerced !== undefined) {
             finalValue = coerced;
-            errors.pop(); // Remove type error if coercion succeeded
+          } else {
+            errors.push(typeError);
           }
+        } else {
+          errors.push(typeError);
         }
       }
     }
@@ -235,9 +237,19 @@ export class ConfigValidator {
   }
 
   private checkType(path: string, value: unknown, type: ConfigType): ValidationError | null {
-    const actualType = Array.isArray(value) ? 'array' : typeof value;
     if (type === 'any') return null;
-    if (actualType === type) return null;
+    const actualType = Array.isArray(value) ? 'array' : typeof value;
+    if (actualType === type) {
+      // For 'object' type, also reject null (since typeof null === 'object')
+      if (type === 'object' && value === null) {
+        return {
+          path,
+          message: `Expected type "${type}", got "null"`,
+          constraint: 'type',
+        };
+      }
+      return null;
+    }
     if (type === 'object' && actualType === 'object' && value !== null && !Array.isArray(value)) return null;
     return {
       path,

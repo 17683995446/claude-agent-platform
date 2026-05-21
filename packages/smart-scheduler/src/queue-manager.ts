@@ -47,6 +47,7 @@ export interface RebalanceResult {
 export class QueueManager {
   private queues: Map<string, Queue> = new Map();
   private idCounter: number = 0;
+  private dequeueCounters: Map<string, number> = new Map();
 
   createQueue(name: string, config?: QueueConfig): Queue {
     const queue: Queue = {
@@ -106,7 +107,11 @@ export class QueueManager {
     const queue = this.queues.get(queueName);
     if (!queue || queue.tasks.length === 0) return undefined;
 
-    return queue.tasks.shift();
+    const task = queue.tasks.shift();
+    if (task) {
+      this.dequeueCounters.set(queueName, (this.dequeueCounters.get(queueName) ?? 0) + 1);
+    }
+    return task;
   }
 
   dequeueFromAny(): { queueName: string; task: QueuedTask } | undefined {
@@ -123,6 +128,7 @@ export class QueueManager {
 
     const queue = sortedQueues[0];
     const task = queue.tasks.shift()!;
+    this.dequeueCounters.set(queue.name, (this.dequeueCounters.get(queue.name) ?? 0) + 1);
     return { queueName: queue.name, task };
   }
 
@@ -136,13 +142,14 @@ export class QueueManager {
       : 0;
 
     const elapsed = (now - queue.createdAt) / 60_000; // minutes
-    const throughput = elapsed > 0 ? queue.tasks.length / elapsed : 0;
+    const totalDequeued = this.dequeueCounters.get(queueName) ?? 0;
+    const throughput = elapsed > 0 ? totalDequeued / elapsed : 0;
 
     return {
       name: queue.name,
       depth: queue.tasks.length,
-      totalEnqueued: queue.tasks.length + queue.deadLetterQueue.length,
-      totalDequeued: 0,
+      totalEnqueued: totalDequeued + queue.tasks.length + queue.deadLetterQueue.length,
+      totalDequeued,
       totalFailed: queue.deadLetterQueue.length,
       deadLetterCount: queue.deadLetterQueue.length,
       avgWaitTime,

@@ -167,7 +167,13 @@ export class ConfigAuditLog {
       const ts = new Date(e.timestamp).toISOString();
       const oldVal = e.oldValue !== undefined ? JSON.stringify(e.oldValue) : '';
       const newVal = e.newValue !== undefined ? JSON.stringify(e.newValue) : '';
-      return `${ts},${e.actor},${e.action},${e.path},"${oldVal}","${newVal}"`;
+      const escapeCsv = (val: string) => {
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          return `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+      };
+      return `${ts},${e.actor},${e.action},${e.path},${escapeCsv(oldVal)},${escapeCsv(newVal)}`;
     });
     return [headers, ...rows].join('\n');
   }

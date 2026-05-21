@@ -93,7 +93,9 @@ export class HeartbeatMonitor {
   getAllStatuses(): Map<string, HeartbeatStatus> {
     const result = new Map<string, HeartbeatStatus>();
     for (const [id, comp] of this.components) {
-      result.set(id, this.getComponentStatus(comp));
+      const status = this.getComponentStatus(comp);
+      status.componentId = id;
+      result.set(id, status);
     }
     return result;
   }

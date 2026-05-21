@@ -94,8 +94,8 @@ export class ConfigHotReloader {
     }
 
     const timer = setTimeout(async () => {
-      await this.executeReload(sourceName);
       this.debounceTimers.delete(sourceName);
+      await this.executeReload(sourceName);
     }, this.debounceMs);
 
     this.debounceTimers.set(sourceName, timer);
@@ -129,8 +129,12 @@ export class ConfigHotReloader {
       success: false,
     };
 
+    // Save pre-reload state for potential rollback BEFORE any changes
+    const backupData = this.preReloadData ? JSON.parse(JSON.stringify(this.preReloadData)) : null;
+
     try {
-      const newData = await this.sourceManager.reload(sourceName);
+      // Reload ALL sources to maintain correct priority ordering
+      const newData = await this.sourceManager.loadAll();
 
       // Validate if validator is configured
       if (this.validator && this.schemas) {
@@ -143,10 +147,11 @@ export class ConfigHotReloader {
         }
       }
 
-      // Save pre-reload state for potential rollback
+      // Update pre-reload data for next rollback (after validation passes)
       this.preReloadData = this.store.getAll();
 
       // Atomic update: merge all new data
+      this.store.clear();
       this.store.merge(newData);
 
       event.success = true;
@@ -154,9 +159,9 @@ export class ConfigHotReloader {
     } catch (err) {
       event.error = err instanceof Error ? err.message : String(err);
       // Rollback on failure
-      if (this.preReloadData) {
+      if (backupData) {
         this.store.clear();
-        this.store.merge(this.preReloadData);
+        this.store.merge(backupData);
       }
     }
 

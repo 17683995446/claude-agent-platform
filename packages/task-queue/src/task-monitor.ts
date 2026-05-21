@@ -71,11 +71,17 @@ export class TaskMonitor {
     const completeEvents = queueEvents.filter((e) => e.type === 'complete');
     let avgLatency = 0;
     if (completeEvents.length > 0) {
+      const enqueueMap = new Map<string, number>();
+      for (const ee of enqueueEvents) {
+        if (!enqueueMap.has(ee.taskId)) {
+          enqueueMap.set(ee.taskId, ee.timestamp);
+        }
+      }
       const latencies: number[] = [];
       for (const ce of completeEvents) {
-        const matchingEnqueue = enqueueEvents.find((ee) => ee.taskId === ce.taskId);
-        if (matchingEnqueue) {
-          latencies.push(ce.timestamp - matchingEnqueue.timestamp);
+        const enqueueTime = enqueueMap.get(ce.taskId);
+        if (enqueueTime !== undefined) {
+          latencies.push(ce.timestamp - enqueueTime);
         }
       }
       if (latencies.length > 0) {

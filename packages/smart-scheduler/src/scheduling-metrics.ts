@@ -110,12 +110,11 @@ export class SchedulingMetrics {
     const successRate = totalTasks > 0 ? completedTasks / totalTasks : 1;
 
     // SLA compliance (tasks completed without deadline-missed event)
-    const deadlineMissed = new Set(
+    const deadlineMissedTaskIds = new Set(
       this.events.filter((e) => e.eventType === 'deadline-missed').map((e) => e.taskId)
     );
-    const slaComplianceRate = totalTasks > 0
-      ? (completedTasks - deadlineMissed.size) / totalTasks
-      : 1;
+    const slaCompliantCount = completed.filter((e) => !deadlineMissedTaskIds.has(e.taskId)).length;
+    const slaComplianceRate = totalTasks > 0 ? slaCompliantCount / totalTasks : 1;
 
     // Scheduling overhead (time between queued and started as ratio of execution time)
     const schedulingOverheadRatio = avgExecutionTime > 0 ? avgWaitTime / avgExecutionTime : 0;

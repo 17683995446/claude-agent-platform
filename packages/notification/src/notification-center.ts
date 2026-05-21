@@ -55,6 +55,7 @@ export interface NotificationRecord {
 interface RateLimitEntry {
   count: number;
   resetTime: number;
+  limit: number;
 }
 
 export class NotificationCenter {
@@ -81,7 +82,6 @@ export class NotificationCenter {
           error: 'Duplicate notification suppressed',
         }];
       }
-      this.dedupeCache.set(notification.dedupeKey, Date.now());
     }
 
     const channels = Array.isArray(notification.channel)
@@ -102,17 +102,26 @@ export class NotificationCenter {
       }
 
       const start = Date.now();
+      let channelSuccess = true;
+      let channelError: string | undefined;
       try {
         const handlers = this.subscriptions.get(ch) || [];
         for (const sub of handlers) {
-          await sub.handler(notification);
+          try {
+            await sub.handler(notification);
+          } catch (handlerErr) {
+            channelSuccess = false;
+            channelError = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
+            // Continue to next handler
+          }
         }
         results.push({
-          success: true,
+          success: channelSuccess,
           notificationId: notification.id,
           channel: ch,
           timestamp: Date.now(),
           duration: Date.now() - start,
+          error: channelError,
         });
       } catch (err) {
         results.push({
@@ -124,6 +133,11 @@ export class NotificationCenter {
           duration: Date.now() - start,
         });
       }
+    }
+
+    // Only mark dedupe cache as sent if at least one channel succeeded
+    if (notification.dedupeKey && results.some(r => r.success)) {
+      this.dedupeCache.set(notification.dedupeKey, Date.now());
     }
 
     this.history.push({
@@ -181,9 +195,13 @@ export class NotificationCenter {
       if (filter.recipient) {
         records = records.filter(r => r.notification.recipient === filter.recipient);
       }
-      if (filter.limit) {
-        records = records.slice(-filter.limit);
-      }
+    }
+
+    // Sort by notification timestamp ascending (oldest first)
+    records.sort((a, b) => a.notification.timestamp - b.notification.timestamp);
+
+    if (filter?.limit) {
+      records = records.slice(-filter.limit);
     }
 
     return records;
@@ -194,11 +212,12 @@ export class NotificationCenter {
     const entry = this.rateLimits.get(channel);
 
     if (!entry || now > entry.resetTime) {
-      this.rateLimits.set(channel, { count: 1, resetTime: now + 60000 });
+      const limit = (this as any)[`rateLimit_${channel}`] ?? this.defaultRateLimit;
+      this.rateLimits.set(channel, { count: 1, resetTime: now + 60000, limit });
       return true;
     }
 
-    if (entry.count >= this.defaultRateLimit) {
+    if (entry.count >= entry.limit) {
       return false;
     }
 
@@ -207,8 +226,7 @@ export class NotificationCenter {
   }
 
   setRateLimit(channel: string, limit: number): void {
-    this.rateLimits.set(channel, { count: 0, resetTime: Date.now() + 60000 });
-    (this as any)[`rateLimit_${channel}`] = limit;
+    this.rateLimits.set(channel, { count: 0, resetTime: Date.now() + 60000, limit });
   }
 
   clearHistory(): void {

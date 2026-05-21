@@ -154,20 +154,26 @@ export class WorkerPool<T = unknown, R = unknown> {
 
     if (this.taskTimeout > 0) {
       timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        worker.busy = false;
+        worker.currentTaskStartedAt = undefined;
         pending.reject(new Error(`Task timed out after ${this.taskTimeout}ms`));
         this.failedTasks++;
-        cleanup();
+        this.processQueue();
       }, this.taskTimeout);
     }
 
     pending
       .handler(pending.task)
       .then((result) => {
+        if (settled) return;
         pending.resolve(result);
         this.completedTasks++;
         cleanup();
       })
       .catch((err) => {
+        if (settled) return;
         pending.reject(err);
         this.failedTasks++;
         cleanup();

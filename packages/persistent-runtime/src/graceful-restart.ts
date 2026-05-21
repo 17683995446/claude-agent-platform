@@ -80,20 +80,22 @@ export class GracefulRestarter {
       record.duration = record.completedAt - record.initiatedAt;
       record.success = true;
       this.restartHistory.push(record);
-      this.isRestarting = false;
-
       return { success: true, reason, timestamp: Date.now() };
     } catch (error) {
-      if (this.enableRollback) {
-        await this.rollback();
-        record.rolledBack = true;
+      try {
+        if (this.enableRollback) {
+          await this.rollback();
+          record.rolledBack = true;
+        }
+      } catch (rollbackError) {
+        // Rollback itself failed; record the original error
       }
       record.completedAt = Date.now();
       record.duration = record.completedAt - record.initiatedAt;
       this.restartHistory.push(record);
-      this.isRestarting = false;
-
       return { success: false, reason: (error as Error).message, timestamp: Date.now() };
+    } finally {
+      this.isRestarting = false;
     }
   }
 

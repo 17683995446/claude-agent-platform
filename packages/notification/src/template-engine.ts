@@ -22,11 +22,11 @@ export class NotificationTemplateEngine {
   render(template: string, context: Record<string, unknown>): string {
     let result = template;
 
-    // Process {{#if condition}}...{{/if}} blocks
-    result = this.processIfBlocks(result, context);
-
-    // Process {{#each items}}...{{/each}} blocks
+    // Process {{#each items}}...{{/each}} blocks first (they internally handle {{#if}} blocks)
     result = this.processEachBlocks(result, context);
+
+    // Process {{#if condition}}...{{/if}} blocks at top level
+    result = this.processIfBlocks(result, context);
 
     // Process {{function arg1 arg2}} calls
     result = this.processFunctionCalls(result, context);
@@ -131,8 +131,11 @@ export class NotificationTemplateEngine {
         const itemContext = typeof item === 'object' ? item as Record<string, unknown> : { value: item };
         const mergedContext = { ...context, ...itemContext, index, '@index': index };
 
+        // Process if blocks within each block
+        itemBody = this.processIfBlocks(itemBody, mergedContext);
+
         // Process variables within each block
-        itemBody = itemBody.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_m: string, key: string) => {
+        itemBody = itemBody.replace(/\{\{(@?\w+(?:\.\w+)*)\}\}/g, (_m: string, key: string) => {
           const value = this.resolveValue(key, mergedContext);
           return value !== undefined ? String(value) : '';
         });
@@ -143,13 +146,14 @@ export class NotificationTemplateEngine {
   }
 
   private processFunctionCalls(template: string, context: Record<string, unknown>): string {
-    const funcRegex = /\{\{(\w+)\s+([^}]*)\}\}/g;
+    // Match function calls: {{funcName arg1 arg2}} or {{funcName}} (no args)
+    const funcRegex = /\{\{(\w+)(?:\s+([^}]*))?\}\}/g;
 
-    return template.replace(funcRegex, (_match, funcName: string, argsStr: string) => {
+    return template.replace(funcRegex, (_match, funcName: string, argsStr: string | undefined) => {
       const fn = this.functions.get(funcName);
       if (!fn) return _match;
 
-      const args = this.parseFunctionArgs(argsStr, context);
+      const args = argsStr ? this.parseFunctionArgs(argsStr, context) : [];
       return fn(args);
     });
   }

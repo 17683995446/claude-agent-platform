@@ -75,28 +75,31 @@ export class FeatureFlagManager {
     const flag = this.flags.get(name);
     if (!flag || flag.status === 'archived') return false;
 
-    this.recordStat(name, flag.config.enabled ? 'enabled' : 'disabled');
+    let result: boolean;
 
     // Check rules first
     if (flag.config.rules && flag.config.rules.length > 0 && context) {
       for (const rule of flag.config.rules) {
-        const result = this.evaluateRule(rule, context);
-        if (result.matched) {
-          return result.enabled ?? flag.enabled ?? false;
+        const ruleResult = this.evaluateRule(rule, context);
+        if (ruleResult.matched) {
+          result = ruleResult.enabled ?? flag.enabled ?? false;
+          this.recordStat(name, result ? 'enabled' : 'disabled');
+          return result;
         }
       }
     }
 
     if (flag.config.type === 'boolean') {
-      return flag.enabled ?? false;
-    }
-
-    if (flag.config.type === 'rollout' && context) {
+      result = flag.enabled ?? false;
+    } else if (flag.config.type === 'rollout' && context) {
       const hash = this.hashContext(context);
-      return (hash % 100) < (flag.config.rolloutPercentage ?? 0);
+      result = (hash % 100) < (flag.config.rolloutPercentage ?? 0);
+    } else {
+      result = flag.enabled ?? false;
     }
 
-    return flag.enabled ?? false;
+    this.recordStat(name, result ? 'enabled' : 'disabled');
+    return result;
   }
 
   /**

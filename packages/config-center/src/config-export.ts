@@ -57,9 +57,9 @@ export class ConfigExporter {
   /**
    * 导出配置到文件
    */
-  exportToFile(filePath: string, format: ExportFormat, options?: ExportOptions): void {
+  async exportToFile(filePath: string, format: ExportFormat, options?: ExportOptions): Promise<void> {
     const content = this.export(format, options);
-    Bun.write(filePath, content);
+    await Bun.write(filePath, content);
   }
 
   /**

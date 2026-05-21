@@ -106,7 +106,12 @@ export class RuntimeConfigManager {
   private changeHistory: ConfigChangeRecord[] = [];
 
   constructor(initialConfig?: Partial<RuntimeConfig>) {
-    this.config = { ...this.getDefaults(), ...initialConfig } as RuntimeConfig;
+    const defaults = this.getDefaults();
+    if (initialConfig) {
+      this.config = this.deepMerge(defaults, initialConfig) as RuntimeConfig;
+    } else {
+      this.config = defaults;
+    }
   }
 
   getConfig(): RuntimeConfig {
@@ -299,5 +304,29 @@ export class RuntimeConfigManager {
       target = target[keys[i]!] as Record<string, unknown>;
     }
     target[keys[keys.length - 1]!] = value;
+  }
+
+  private deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+    const result = { ...target };
+    for (const key of Object.keys(source)) {
+      const sourceVal = source[key];
+      const targetVal = result[key];
+      if (
+        sourceVal !== null &&
+        typeof sourceVal === 'object' &&
+        !Array.isArray(sourceVal) &&
+        targetVal !== null &&
+        typeof targetVal === 'object' &&
+        !Array.isArray(targetVal)
+      ) {
+        result[key] = this.deepMerge(
+          targetVal as Record<string, unknown>,
+          sourceVal as Record<string, unknown>,
+        );
+      } else if (sourceVal !== undefined) {
+        result[key] = sourceVal;
+      }
+    }
+    return result;
   }
 }

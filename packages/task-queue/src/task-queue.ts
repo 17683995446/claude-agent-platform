@@ -52,6 +52,9 @@ export class TaskQueue<T = unknown> {
       throw new Error('Queue is full');
     }
     const id = task.id ?? generateId();
+    if (this.tasks.has(id)) {
+      throw new Error(`Task with id "${id}" already exists`);
+    }
     const now = Date.now();
     const taskEntry: Task<T> = {
       id,
