@@ -209,6 +209,7 @@ export class CodeUnderstandingEngine {
       const startLine = content.slice(0, match.index).split('\n').length;
       const body = content.slice(match.index);
       const complexity = this.measureFunctionComplexity(body, language);
+      const endLine = this.findArrowFunctionEndLine(content, match.index, lines);
 
       functions.push({
         name,
@@ -216,7 +217,7 @@ export class CodeUnderstandingEngine {
         returnType,
         dependencies: this.extractDependencies(body),
         startLine,
-        endLine: startLine + 5,
+        endLine,
         complexity,
       });
     }
@@ -325,7 +326,18 @@ export class CodeUnderstandingEngine {
 
   private computeComplexity(content: string, functions: FunctionInfo[], classes: ClassInfo[], lines: string[]): CodeComplexity {
     const cyclomaticComplexity = functions.reduce((sum, fn) => sum + fn.complexity, 0);
-    const codeLines = lines.filter(l => l.trim() && !l.trim().startsWith('//') && !l.trim().startsWith('*')).length;
+    // Filter out empty lines and comment lines
+    const codeLines = lines.filter(l => {
+      const trimmed = l.trim();
+      if (!trimmed) return false;
+      // Skip single-line comments
+      if (trimmed.startsWith('//')) return false;
+      // Skip JSDoc/multi-line comment markers but not the content
+      if (trimmed === '/**' || trimmed === '*/' || trimmed === '*') return false;
+      // Skip Python comments
+      if (trimmed.startsWith('#')) return false;
+      return true;
+    }).length;
     const nestingDepth = this.maxNestingDepth(content);
 
     return {
@@ -422,6 +434,43 @@ export class CodeUnderstandingEngine {
       if (char === '}') currentDepth--;
     }
     return maxDepth;
+  }
+
+  private findArrowFunctionEndLine(content: string, startIndex: number, lines: string[]): number {
+    const startLine = content.slice(0, startIndex).split('\n').length;
+    const bodyStart = content.indexOf('=>', startIndex) + 2;
+    if (bodyStart <= 2) return startLine;
+    
+    // Check if it's a block body or expression body
+    const afterArrow = content.slice(bodyStart).trim();
+    if (afterArrow.startsWith('{')) {
+      // Block body - find matching brace
+      let depth = 0;
+      let pos = bodyStart + afterArrow.indexOf('{');
+      for (let i = pos; i < content.length; i++) {
+        if (content[i] === '{') depth++;
+        if (content[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            return content.slice(0, i).split('\n').length;
+          }
+        }
+      }
+    }
+    // Expression body - single line or until semicolon/newline
+    const endOfLine = content.indexOf('\n', bodyStart);
+    const endOfStatement = content.indexOf(';', bodyStart);
+    let endPos;
+    if (endOfLine === -1 && endOfStatement === -1) {
+      endPos = content.length;
+    } else if (endOfLine === -1) {
+      endPos = endOfStatement;
+    } else if (endOfStatement === -1) {
+      endPos = endOfLine;
+    } else {
+      endPos = Math.min(endOfLine, endOfStatement);
+    }
+    return content.slice(0, endPos).split('\n').length;
   }
 
   private summarizeCode(functions: FunctionInfo[], classes: ClassInfo[], exports: string[], language: string): string {

@@ -94,7 +94,30 @@ export class CORSHandler {
   }
 
   isCORSRequest(request: IncomingRequest): boolean {
-    return !!request.headers['origin'] && request.headers['origin'] !== request.headers['host'];
+    const origin = request.headers['origin'];
+    if (!origin) return false;
+
+    // Extract host from origin for comparison
+    try {
+      const originUrl = new URL(origin);
+      const originHost = originUrl.host; // e.g., "example.com" or "example.com:8080"
+      const requestHost = request.headers['host'];
+
+      // Handle case where host header might include protocol (non-standard but handle gracefully)
+      let normalizedRequestHost = requestHost;
+      if (requestHost && (requestHost.startsWith('http://') || requestHost.startsWith('https://'))) {
+        try {
+          normalizedRequestHost = new URL(requestHost).host;
+        } catch {
+          normalizedRequestHost = requestHost;
+        }
+      }
+
+      return originHost !== normalizedRequestHost;
+    } catch {
+      // If URL parsing fails, fall back to direct comparison
+      return origin !== request.headers['host'];
+    }
   }
 
   getDefaultConfig(): CORSConfig {

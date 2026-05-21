@@ -105,21 +105,23 @@ export class ContextWindowManager {
     });
 
     const selected: ContextMessage[] = [];
+    const selectedIds = new Set<string>();
     let totalTokens = 0;
 
     // Always include system messages first
     for (const msg of sorted) {
       if (msg.role === 'system' && totalTokens + msg.tokens <= this.tokenBudget) {
         selected.push(msg);
+        selectedIds.add(msg.id);
         totalTokens += msg.tokens;
       }
     }
 
-    // Then fill remaining budget by importance
-    const remaining = sorted.filter(m => m.role !== 'system');
-    for (const msg of remaining) {
-      if (totalTokens + msg.tokens <= this.tokenBudget) {
+    // Then fill remaining budget by importance, skipping already selected
+    for (const msg of sorted) {
+      if (!selectedIds.has(msg.id) && totalTokens + msg.tokens <= this.tokenBudget) {
         selected.push(msg);
+        selectedIds.add(msg.id);
         totalTokens += msg.tokens;
       }
     }
@@ -162,8 +164,8 @@ export class ContextWindowManager {
         msg.content = summary;
         msg.tokens = countTokens(summary);
         currentTokens -= savedTokens;
-      } else if (msg.priority < 70) {
-        // Remove low priority messages
+      } else if (msg.priority < 70 && msg.role !== 'system') {
+        // Remove low priority messages (but never remove system messages)
         removedMessages.push(msg.id);
         currentTokens -= msg.tokens;
       }

@@ -78,8 +78,8 @@ export class CodeGenerationAssistant {
     // Analyze the prefix to determine what kind of completion is needed
     const trimmedPrefix = prefix.trimEnd();
 
-    // Import completion
-    if (trimmedPrefix.match(/^import\s/)) {
+    // Import completion - check for import statement patterns
+    if (trimmedPrefix.match(/^import\s/) || trimmedPrefix.match(/\s+import\s/)) {
       suggestions.push({
         text: `import { ${this.guessImportName(suffix, language)} } from './module';`,
         confidence: 0.7,

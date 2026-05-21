@@ -99,6 +99,9 @@ export class SchemaMigrator {
   }
 
   registerMigration(migration: Migration): void {
+    if (this.migrations.has(migration.id)) {
+      throw new Error(`Migration with id '${migration.id}' is already registered`);
+    }
     this.migrations.set(migration.id, migration);
   }
 

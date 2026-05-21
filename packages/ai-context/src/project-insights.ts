@@ -230,14 +230,14 @@ export class ProjectInsightsEngine {
     const allContent = project.files.map(f => f.content).join('\n');
     const allLower = allContent.toLowerCase();
 
+    // MVVM detection - check before MVC since viewmodel contains 'view'
+    if (paths.some(p => p.includes('viewmodel') || p.includes('view-model'))) {
+      return 'mvvm';
+    }
+
     // MVC detection
     if (paths.some(p => p.includes('controller') || p.includes('view') || p.includes('model'))) {
       return 'mvc';
-    }
-
-    // MVVM detection
-    if (paths.some(p => p.includes('viewmodel') || p.includes('view-model'))) {
-      return 'mvvm';
     }
 
     // Clean Architecture detection

@@ -276,6 +276,7 @@ export class WorkloadPredictor {
     const secondAvg = this.averageMetrics(secondHalf).taskCount;
 
     if (firstAvg === 0) return secondAvg > 0 ? 'increasing' : 'stable';
+    if (secondAvg === 0) return firstAvg > 0 ? 'decreasing' : 'stable';
     const change = (secondAvg - firstAvg) / firstAvg;
 
     if (change > 0.1) return 'increasing';

@@ -194,12 +194,19 @@ export class BackpressureHandler {
     }
 
     if (newLevel !== this.currentLevel) {
-      // Only recover if below recovery threshold
-      if (newLevel === 'none' || this.queueDepth < this.config.recoveryThreshold) {
+      // When escalating pressure (going to higher level), always update
+      // When recovering (going to lower level), only update if below recovery threshold
+      const isEscalating = this.getLevelIndex(newLevel) > this.getLevelIndex(this.currentLevel);
+      if (isEscalating || this.queueDepth < this.config.recoveryThreshold) {
         this.currentLevel = newLevel;
         this.levelHistory.push({ timestamp: Date.now(), level: newLevel });
       }
     }
+  }
+
+  private getLevelIndex(level: BackpressureLevel): number {
+    const levels: BackpressureLevel[] = ['none', 'mild', 'moderate', 'severe', 'critical'];
+    return levels.indexOf(level);
   }
 
   private determineAction(level: BackpressureLevel): BackpressureStrategy {

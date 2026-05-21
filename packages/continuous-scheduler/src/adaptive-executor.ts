@@ -239,21 +239,34 @@ export class AdaptiveExecutor {
       }, timeoutMs);
 
       // Simulate execution - in real use, this would execute the task payload
+      const cleanup = () => {
+        clearTimeout(timer);
+      };
+
       try {
         if (task.payload && typeof task.payload === 'object' && 'handler' in task.payload) {
           const handler = (task.payload as { handler: () => unknown }).handler;
           if (typeof handler === 'function') {
-            resolve(handler());
+            Promise.resolve(handler())
+              .then((result) => {
+                cleanup();
+                resolve(result);
+              })
+              .catch((err) => {
+                cleanup();
+                reject(err);
+              });
           } else {
+            cleanup();
             resolve(task.payload);
           }
         } else {
+          cleanup();
           resolve({ executed: task.id, at: Date.now() });
         }
       } catch (err) {
+        cleanup();
         reject(err);
-      } finally {
-        clearTimeout(timer);
       }
     });
   }

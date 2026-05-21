@@ -96,8 +96,8 @@ export class WebSocketManager {
       timestamp: Date.now(),
     };
 
-    // Handle pong
-    if (message.type === 'pong') {
+    // Handle pong - use raw message type to avoid type transformation
+    if (typeof rawMessage === 'object' && rawMessage !== null && (rawMessage as any).type === 'pong') {
       connection.lastPong = Date.now();
       return;
     }

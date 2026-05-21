@@ -49,10 +49,14 @@ export class ConversationManager {
   /** 创建新对话 */
   createConversation(config?: ConversationConfig): Conversation {
     const id = this.generateId();
+    const maxMessages = config?.maxMessages ?? 100;
+    if (maxMessages <= 0) {
+      throw new Error('maxMessages must be greater than 0');
+    }
     const conversation: Conversation = {
       id,
       messages: [],
-      maxMessages: config?.maxMessages ?? 100,
+      maxMessages,
       systemPrompt: config?.systemPrompt,
       createdAt: Date.now(),
       updatedAt: Date.now(),

@@ -322,15 +322,27 @@ export class SchedulingAnalytics {
 
   private isTaskCompleted(taskId?: string): boolean {
     if (!taskId) return false;
-    return this.events.some(
-      (e) => e.taskId === taskId && (e.type === 'task_completed' || e.type === 'task_failed' || e.type === 'task_cancelled')
-    );
+    // Find the most recent event for this task
+    const taskEvents = this.events
+      .filter(e => e.taskId === taskId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    if (taskEvents.length === 0) return false;
+    
+    const mostRecent = taskEvents[0];
+    return mostRecent.type === 'task_completed' || mostRecent.type === 'task_failed' || mostRecent.type === 'task_cancelled';
   }
 
   private isTaskStarted(taskId?: string): boolean {
     if (!taskId) return false;
-    return this.events.some(
-      (e) => e.taskId === taskId && (e.type === 'task_started' || e.type === 'task_completed' || e.type === 'task_failed')
-    );
+    // Find the most recent event for this task
+    const taskEvents = this.events
+      .filter(e => e.taskId === taskId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    if (taskEvents.length === 0) return false;
+    
+    const mostRecent = taskEvents[0];
+    return mostRecent.type === 'task_started' || mostRecent.type === 'task_completed' || mostRecent.type === 'task_failed';
   }
 }

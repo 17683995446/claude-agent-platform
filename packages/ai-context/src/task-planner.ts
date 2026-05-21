@@ -66,10 +66,10 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     pattern: /refactor|重构|restructure/i,
     tasks: [
       { name: 'Analyze current code', description: 'Understand the existing code structure', dependencies: [], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['analysis'] },
-      { name: 'Identify refactoring targets', description: 'Find code that needs refactoring', dependencies: ['task_0'], status: 'pending', complexity: 4, estimatedDuration: 20, subtasks: [], tags: ['analysis'] },
-      { name: 'Plan refactoring approach', description: 'Design the new structure', dependencies: ['task_1'], status: 'pending', complexity: 5, estimatedDuration: 30, subtasks: [], tags: ['planning'] },
-      { name: 'Implement refactoring', description: 'Apply the refactoring changes', dependencies: ['task_2'], status: 'pending', complexity: 7, estimatedDuration: 60, subtasks: [], tags: ['implementation'] },
-      { name: 'Run tests', description: 'Verify refactoring did not break anything', dependencies: ['task_3'], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['testing'] },
+      { name: 'Identify refactoring targets', description: 'Find code that needs refactoring', dependencies: [0], status: 'pending', complexity: 4, estimatedDuration: 20, subtasks: [], tags: ['analysis'] },
+      { name: 'Plan refactoring approach', description: 'Design the new structure', dependencies: [1], status: 'pending', complexity: 5, estimatedDuration: 30, subtasks: [], tags: ['planning'] },
+      { name: 'Implement refactoring', description: 'Apply the refactoring changes', dependencies: [2], status: 'pending', complexity: 7, estimatedDuration: 60, subtasks: [], tags: ['implementation'] },
+      { name: 'Run tests', description: 'Verify refactoring did not break anything', dependencies: [3], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['testing'] },
     ],
   },
   {
@@ -77,9 +77,9 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     pattern: /test|测试|spec/i,
     tasks: [
       { name: 'Identify test targets', description: 'Find code that needs tests', dependencies: [], status: 'pending', complexity: 2, estimatedDuration: 10, subtasks: [], tags: ['analysis'] },
-      { name: 'Write unit tests', description: 'Create unit tests', dependencies: ['task_0'], status: 'pending', complexity: 5, estimatedDuration: 45, subtasks: [], tags: ['implementation'] },
-      { name: 'Write integration tests', description: 'Create integration tests', dependencies: ['task_0'], status: 'pending', complexity: 6, estimatedDuration: 45, subtasks: [], tags: ['implementation'] },
-      { name: 'Run all tests', description: 'Execute test suite', dependencies: ['task_1', 'task_2'], status: 'pending', complexity: 2, estimatedDuration: 10, subtasks: [], tags: ['testing'] },
+      { name: 'Write unit tests', description: 'Create unit tests', dependencies: [0], status: 'pending', complexity: 5, estimatedDuration: 45, subtasks: [], tags: ['implementation'] },
+      { name: 'Write integration tests', description: 'Create integration tests', dependencies: [0], status: 'pending', complexity: 6, estimatedDuration: 45, subtasks: [], tags: ['implementation'] },
+      { name: 'Run all tests', description: 'Execute test suite', dependencies: [1, 2], status: 'pending', complexity: 2, estimatedDuration: 10, subtasks: [], tags: ['testing'] },
     ],
   },
   {
@@ -87,9 +87,9 @@ const TASK_TEMPLATES: TaskTemplate[] = [
     pattern: /deploy|部署|release|publish/i,
     tasks: [
       { name: 'Pre-deployment checks', description: 'Run linting, type checking, tests', dependencies: [], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['verification'] },
-      { name: 'Build production bundle', description: 'Create optimized production build', dependencies: ['task_0'], status: 'pending', complexity: 4, estimatedDuration: 20, subtasks: [], tags: ['build'] },
-      { name: 'Deploy to environment', description: 'Deploy the build', dependencies: ['task_1'], status: 'pending', complexity: 5, estimatedDuration: 30, subtasks: [], tags: ['deployment'] },
-      { name: 'Post-deployment verification', description: 'Verify deployment is healthy', dependencies: ['task_2'], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['verification'] },
+      { name: 'Build production bundle', description: 'Create optimized production build', dependencies: [0], status: 'pending', complexity: 4, estimatedDuration: 20, subtasks: [], tags: ['build'] },
+      { name: 'Deploy to environment', description: 'Deploy the build', dependencies: [1], status: 'pending', complexity: 5, estimatedDuration: 30, subtasks: [], tags: ['deployment'] },
+      { name: 'Post-deployment verification', description: 'Verify deployment is healthy', dependencies: [2], status: 'pending', complexity: 3, estimatedDuration: 15, subtasks: [], tags: ['verification'] },
     ],
   },
 ];
@@ -98,7 +98,7 @@ export class TaskPlanner {
   plan(request: string, context: PlanningContext = {}): TaskPlan {
     const tasks = this.decomposeTask(request, context);
     const ordered = this.topologicalSort(tasks);
-    const criticalPath = this.getCriticalPath(ordered);
+    const criticalPath = this.computeCriticalPath(ordered);
     const totalDuration = ordered.reduce((sum, t) => sum + t.estimatedDuration, 0);
 
     return {
@@ -134,7 +134,7 @@ export class TaskPlanner {
     }
 
     // Recalculate critical path
-    plan.criticalPath = this.getCriticalPath(plan.tasks);
+    plan.criticalPath = this.computeCriticalPath(plan.tasks);
 
     return { ...plan };
   }
@@ -167,18 +167,39 @@ export class TaskPlanner {
   }
 
   getCriticalPath(plan: TaskPlan): Task[] {
-    return this.getCriticalPath(plan.tasks);
+    return this.computeCriticalPath(plan.tasks);
   }
 
   private decomposeTask(request: string, context: PlanningContext): Task[] {
     // Check for template matches
     for (const template of TASK_TEMPLATES) {
       if (template.pattern.test(request)) {
-        return template.tasks.map((t, i) => ({
-          ...t,
-          id: newTaskId(),
-          subtasks: [],
-        }));
+        const tasks: Task[] = [];
+        const idMap = new Map<number, string>();
+        
+        // First pass: create tasks and map indices to IDs
+        for (let i = 0; i < template.tasks.length; i++) {
+          const id = newTaskId();
+          idMap.set(i, id);
+          tasks.push({
+            ...template.tasks[i],
+            id,
+            subtasks: [],
+          });
+        }
+        
+        // Second pass: resolve dependencies using numeric indices
+        for (let i = 0; i < tasks.length; i++) {
+          const originalDeps = template.tasks[i].dependencies;
+          if (originalDeps.length > 0) {
+            tasks[i].dependencies = originalDeps.map(depIdx => {
+              const idx = typeof depIdx === 'number' ? depIdx : parseInt(String(depIdx), 10);
+              return idMap.get(idx) || '';
+            }).filter(Boolean);
+          }
+        }
+        
+        return tasks;
       }
     }
 
@@ -263,7 +284,7 @@ export class TaskPlanner {
     return result;
   }
 
-  private getCriticalPath(tasks: Task[]): Task[] {
+  private computeCriticalPath(tasks: Task[]): Task[] {
     const taskMap = new Map(tasks.map(t => [t.id, t]));
 
     // Calculate earliest finish time for each task

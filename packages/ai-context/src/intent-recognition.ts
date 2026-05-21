@@ -225,9 +225,16 @@ export class IntentRecognizer {
     const lastUserMsg = [...history].reverse().find(m => m.role === 'user');
     if (!lastUserMsg) return intent;
 
-    // If current input is a follow-up (short, no clear intent), use previous intent
-    const lastResult = this.recognizeInternal(lastUserMsg.content);
-    return lastResult;
+    // If current intent is general_question but we have history, check if it might be a follow-up
+    if (intent === 'general_question') {
+      const lastResult = this.recognizeInternal(lastUserMsg.content);
+      // Only use previous intent if it was a specific code-related intent
+      if (lastResult !== 'general_question') {
+        return lastResult;
+      }
+    }
+    
+    return intent;
   }
 
   private recognizeInternal(input: string): IntentCategory {

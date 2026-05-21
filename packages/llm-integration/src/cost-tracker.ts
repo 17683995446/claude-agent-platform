@@ -207,8 +207,22 @@ export class CostTracker {
       recentDailyCosts.unshift(dayCost);
     }
 
+    // Handle case when there's no data
+    if (recentDailyCosts.length === 0 || recentDailyCosts.every(c => c === 0)) {
+      return {
+        projectedDailyCost: 0,
+        projectedMonthlyCost: 0,
+        projectedDailyTokens: 0,
+        projectedMonthlyTokens: 0,
+        trend: 'stable',
+        confidence: 0,
+      };
+    }
+
     const avgDailyCost = recentDailyCosts.reduce((a, b) => a + b, 0) / recentDailyCosts.length;
-    const avgDailyTokens = recentRecords.reduce((sum, r) => sum + r.promptTokens + r.completionTokens, 0) / 7;
+    const avgDailyTokens = recentRecords.length > 0
+      ? recentRecords.reduce((sum, r) => sum + r.promptTokens + r.completionTokens, 0) / 7
+      : 0;
 
     // 计算趋势
     let trend: 'increasing' | 'decreasing' | 'stable' = 'stable';

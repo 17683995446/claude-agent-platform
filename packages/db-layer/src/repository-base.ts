@@ -185,7 +185,12 @@ export abstract class BaseRepository<T extends Record<string, unknown>> {
   }
 
   protected generateId(): string {
-    return `${this.tableName}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Use crypto.randomUUID() if available for better uniqueness, fallback to timestamp + random
+    const timestamp = Date.now();
+    const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+      : `${Math.random().toString(36).substring(2, 9)}${Math.random().toString(36).substring(2, 9)}`;
+    return `${this.tableName}-${timestamp}-${random}`;
   }
 
   protected applyFilter(entities: T[], filter: FilterOptions): T[] {

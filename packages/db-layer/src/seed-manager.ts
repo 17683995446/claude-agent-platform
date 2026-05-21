@@ -29,7 +29,7 @@ export interface SeedResult {
 
 export class SeedManager {
   private seeds: Map<string, Seed> = new Map();
-  private history: SeedRecord[] = new Map<string, SeedRecord[]>();
+  private history: Map<string, SeedRecord[]> = new Map();
   private currentEnvironment: string;
   private executeSqlFn: (sql: string) => Promise<void>;
 

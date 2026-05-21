@@ -24,6 +24,8 @@ export class QueryBuilder {
   private _params: unknown[] = [];
   private _setOperations: { operation: SetOperation; builder: QueryBuilder }[] = [];
 
+  private readonly VALID_SAVEPOINT_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
   select(columns: string[]): QueryBuilder {
     this._select = columns;
     return this;

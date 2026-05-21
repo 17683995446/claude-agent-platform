@@ -338,9 +338,9 @@ export class AnthropicProvider implements LLMProvider {
             const chunk: StreamChunk = { model: event.model };
 
             if (event.type === 'content_block_delta' && event.delta) {
-              if (event.delta.type === 'text_delta') {
+              if (event.delta.type === 'text_delta' && event.delta.text) {
                 chunk.delta = { content: event.delta.text };
-              } else if (event.delta.type === 'input_json_delta') {
+              } else if (event.delta.type === 'input_json_delta' && event.delta.partial_json) {
                 chunk.delta = { content: event.delta.partial_json };
               }
             }

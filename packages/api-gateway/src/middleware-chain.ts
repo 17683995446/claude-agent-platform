@@ -37,86 +37,44 @@ export class MiddlewareChain {
   }
 
   async execute(context: RequestContext): Promise<ResponseContext> {
-    let index = 0;
-    let shortCircuited = false;
     let response: ResponseContext = { status: 200 };
+    let errorOccurred: Error | null = null;
 
-    const next = async (): Promise<void> => {
-      if (shortCircuited) return;
-      if (index >= this.middleware.length) return;
-
-      const currentMiddleware = this.middleware[index];
-      index++;
-
-      try {
-        await currentMiddleware(context, next);
-      } catch (error) {
-        if (this.options.onError) {
-          this.options.onError(error instanceof Error ? error : new Error(String(error)), context);
-        }
-        throw error;
-      }
-    };
-
-    // Wrap next to support short-circuit
-    const originalNext = next;
-    const wrappedNext = async (): Promise<void> => {
-      await originalNext();
-    };
-
-    // Create a chain that supports short-circuit via setting response on context
-    const executeChain = async () => {
-      try {
-        await wrappedNext();
-      } catch (error) {
-        response = {
-          status: 500,
-          body: { error: error instanceof Error ? error.message : String(error) },
-        };
-      }
-    };
-
-    // We need a different approach for short-circuit
-    // Let's use a flag-based approach
-    index = 0;
-    shortCircuited = false;
-
-    const runMiddleware = async (idx: number): Promise<void> => {
-      if (idx >= this.middleware.length || shortCircuited) return;
+    // Koa-style middleware dispatch - errors bubble up through the call stack
+    const dispatch = async (idx: number): Promise<void> => {
+      if (idx >= this.middleware.length) return;
 
       const mw = this.middleware[idx];
       let calledNext = false;
 
       const nextFn = async (): Promise<void> => {
         calledNext = true;
-        await runMiddleware(idx + 1);
+        await dispatch(idx + 1);
       };
 
-      try {
-        await mw(context, nextFn);
-      } catch (error) {
-        if (this.options.onError) {
-          this.options.onError(error instanceof Error ? error : new Error(String(error)), context);
-        }
-        throw error;
-      }
+      await mw(context, nextFn);
 
       // If next() was never called, short-circuit the chain
       if (!calledNext) {
-        shortCircuited = true;
+        // Mark as short-circuited by setting a flag that can be checked by parent calls
+        (context as any)._shortCircuited = true;
       }
     };
 
     try {
-      await runMiddleware(0);
+      await dispatch(0);
     } catch (error) {
+      errorOccurred = error instanceof Error ? error : new Error(String(error));
+      if (this.options.onError) {
+        this.options.onError(errorOccurred, context);
+      }
       response = {
         status: 500,
-        body: { error: error instanceof Error ? error.message : String(error) },
+        body: { error: errorOccurred.message },
       };
     }
 
-    // If middleware set a response on context, use it
+    // If middleware set a response on context, use it (for auth failures, etc.)
     if ((context as any)._response) {
       response = (context as any)._response;
     }

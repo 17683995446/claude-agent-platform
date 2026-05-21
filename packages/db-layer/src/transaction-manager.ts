@@ -43,7 +43,14 @@ export class TransactionManager {
     }
   }
 
+  private readonly VALID_ISOLATION_LEVELS: IsolationLevel[] = ['READ UNCOMMITTED', 'READ COMMITTED', 'REPEATABLE READ', 'SERIALIZABLE'];
+
   async beginTransaction(isolation: IsolationLevel = 'READ COMMITTED'): Promise<Transaction> {
+    // Validate isolation level to prevent SQL injection
+    if (!this.VALID_ISOLATION_LEVELS.includes(isolation)) {
+      throw new Error(`Invalid isolation level: ${isolation}. Valid levels are: ${this.VALID_ISOLATION_LEVELS.join(', ')}`);
+    }
+
     this.transactionCounter++;
     const id = `tx-${this.transactionCounter}`;
 
@@ -65,11 +72,11 @@ export class TransactionManager {
   }
 
   async commit(transaction: Transaction): Promise<void> {
-    if (!this.activeTransactions.has(transaction.id)) {
-      throw new Error(`Transaction ${transaction.id} is not active`);
-    }
     if (transaction.isCommitted || transaction.isRolledBack) {
       throw new Error(`Transaction ${transaction.id} is already finalized`);
+    }
+    if (!this.activeTransactions.has(transaction.id)) {
+      throw new Error(`Transaction ${transaction.id} is not active`);
     }
 
     await this.executeSqlFn('COMMIT');
@@ -79,11 +86,11 @@ export class TransactionManager {
   }
 
   async rollback(transaction: Transaction): Promise<void> {
-    if (!this.activeTransactions.has(transaction.id)) {
-      throw new Error(`Transaction ${transaction.id} is not active`);
-    }
     if (transaction.isCommitted || transaction.isRolledBack) {
       throw new Error(`Transaction ${transaction.id} is already finalized`);
+    }
+    if (!this.activeTransactions.has(transaction.id)) {
+      throw new Error(`Transaction ${transaction.id} is not active`);
     }
 
     await this.executeSqlFn('ROLLBACK');
@@ -92,12 +99,21 @@ export class TransactionManager {
     this.emit({ type: 'rollback', transactionId: transaction.id, timestamp: Date.now() });
   }
 
+  private readonly VALID_SAVEPOINT_REGEX = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
+
+  private validateSavepointName(name: string): void {
+    if (!this.VALID_SAVEPOINT_REGEX.test(name)) {
+      throw new Error(`Invalid savepoint name: ${name}. Must match pattern: ${this.VALID_SAVEPOINT_REGEX.source}`);
+    }
+  }
+
   async createSavepoint(transaction: Transaction, name?: string): Promise<string> {
     if (!this.activeTransactions.has(transaction.id)) {
       throw new Error(`Transaction ${transaction.id} is not active`);
     }
 
     const savepointName = name ?? `sp-${transaction.savepoints.length + 1}`;
+    this.validateSavepointName(savepointName);
     await this.executeSqlFn(`SAVEPOINT ${savepointName}`);
     transaction.savepoints.push(savepointName);
     this.emit({
@@ -117,6 +133,7 @@ export class TransactionManager {
       throw new Error(`Savepoint ${name} not found in transaction ${transaction.id}`);
     }
 
+    this.validateSavepointName(name);
     await this.executeSqlFn(`ROLLBACK TO SAVEPOINT ${name}`);
     this.emit({
       type: 'rollback',
@@ -131,6 +148,7 @@ export class TransactionManager {
       throw new Error(`Transaction ${transaction.id} is not active`);
     }
 
+    this.validateSavepointName(name);
     await this.executeSqlFn(`RELEASE SAVEPOINT ${name}`);
     const idx = transaction.savepoints.indexOf(name);
     if (idx >= 0) {

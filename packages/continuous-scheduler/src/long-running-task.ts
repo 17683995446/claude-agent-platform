@@ -19,7 +19,7 @@ export interface Milestone {
   reachedAt?: number;
 }
 
-export type LongTaskState = 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'timed_out';
+export type LongTaskState = 'pending' | 'running' | 'paused' | 'completed' | 'cancelled' | 'timed_out' | 'failed';
 
 export interface LongTaskStatus {
   id: string;
@@ -136,7 +136,7 @@ export class LongRunningTaskManager {
   cancelTask(taskId: string): boolean {
     const task = this.tasks.get(taskId);
     if (!task) return false;
-    if (task.state === 'completed' || task.state === 'cancelled') return false;
+    if (task.state === 'completed' || task.state === 'cancelled' || task.state === 'timed_out' || task.state === 'failed') return false;
 
     task.state = 'cancelled';
     task.cancelledAt = Date.now();
@@ -205,8 +205,13 @@ export class LongRunningTaskManager {
   }
 
   private async executeHandler(task: InternalLongTask): Promise<void> {
+    const timeoutMs = task.timeoutAt - Date.now();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Task timed out')), Math.max(0, timeoutMs));
+    });
+
     try {
-      const result = await task.handler();
+      const result = await Promise.race([task.handler(), timeoutPromise]);
       if (task.state === 'running') {
         task.state = 'completed';
         task.completedAt = Date.now();
@@ -215,9 +220,15 @@ export class LongRunningTaskManager {
       }
     } catch (err) {
       if (task.state === 'running') {
-        task.state = 'cancelled';
-        task.cancelledAt = Date.now();
-        task.error = err instanceof Error ? err.message : String(err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        // Distinguish between timeout and other errors
+        if (errorMsg === 'Task timed out') {
+          task.state = 'timed_out';
+        } else {
+          task.state = 'failed';
+        }
+        task.completedAt = Date.now();
+        task.error = errorMsg;
       }
     }
   }

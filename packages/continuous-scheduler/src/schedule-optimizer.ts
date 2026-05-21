@@ -205,22 +205,35 @@ export class ScheduleOptimizer {
   ): ContinuousTask[] {
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
     const visited = new Set<string>();
+    const tempMarked = new Set<string>(); // For cycle detection
     const result: ContinuousTask[] = [];
 
-    const visit = (taskId: string) => {
-      if (visited.has(taskId)) return;
-      visited.add(taskId);
+    const visit = (taskId: string, path: string[] = []): boolean => {
+      if (tempMarked.has(taskId)) {
+        // Cycle detected - skip this dependency
+        console.warn(`Circular dependency detected: ${[...path, taskId].join(' -> ')}`);
+        return false;
+      }
+      if (visited.has(taskId)) return true;
 
       const task = taskMap.get(taskId);
-      if (!task) return;
+      if (!task) return true; // External dependency, treat as resolved
+
+      tempMarked.add(taskId);
 
       if (task.dependencies) {
         for (const dep of task.dependencies) {
-          visit(dep);
+          if (!visit(dep, [...path, taskId])) {
+            // Cycle in dependency, remove it
+            task.dependencies = task.dependencies.filter(d => d !== dep);
+          }
         }
       }
 
+      tempMarked.delete(taskId);
+      visited.add(taskId);
       result.push(task);
+      return true;
     };
 
     for (const task of tasks) {

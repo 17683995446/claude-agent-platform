@@ -1174,7 +1174,7 @@ describe('LongRunningTaskManager', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const status = manager.getTaskStatus('lt1');
-    expect(status?.state).toBe('cancelled');
+    expect(status?.state).toBe('failed');
     expect(status?.error).toContain('handler error');
   });
 

@@ -346,6 +346,12 @@ export class DynamicPriorityScheduler {
         if (timeSinceLastExec > 10 * 60 * 1000 && task.currentPriority < this.options.starvationThreshold) {
           task.currentPriority = this.options.starvationThreshold;
         }
+      } else {
+        // Task has never been executed - check wait time from scheduling
+        const waitTime = now - task.scheduledAt;
+        if (waitTime > 10 * 60 * 1000 && task.currentPriority < this.options.starvationThreshold) {
+          task.currentPriority = this.options.starvationThreshold;
+        }
       }
     }
   }

@@ -145,9 +145,16 @@ export class DataMapper<T extends Record<string, unknown> = Record<string, unkno
         return Boolean(value);
       case 'date':
         if (typeof value === 'string') {
-          return new Date(value).toISOString();
+          const date = new Date(value);
+          if (isNaN(date.getTime())) {
+            return null; // Invalid date
+          }
+          return date.toISOString();
         }
         if (value instanceof Date) {
+          if (isNaN(value.getTime())) {
+            return null; // Invalid date
+          }
           return value.toISOString();
         }
         return value;

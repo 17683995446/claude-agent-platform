@@ -193,6 +193,13 @@ export class Router {
   private buildPattern(path: string): { pattern: RegExp; paramNames: string[] } {
     const paramNames: string[] = [];
     let regexStr = '^';
+
+    // Handle root path specially
+    if (path === '/') {
+      regexStr += '\/$';
+      return { pattern: new RegExp(regexStr), paramNames };
+    }
+
     const segments = path.split('/').filter(Boolean);
     regexStr += '\\/';
     for (const segment of segments) {
@@ -205,7 +212,7 @@ export class Router {
       }
     }
     // Remove trailing slash unless path ends with /
-    if (!path.endsWith('/') || path === '/') {
+    if (!path.endsWith('/')) {
       regexStr = regexStr.slice(0, -2);
     }
     regexStr += '$';

@@ -50,11 +50,13 @@ export class APICache {
     }
 
     const now = Date.now();
-    const isStale = now - entry.createdAt > entry.ttl;
+    const age = now - entry.createdAt;
+    const isStale = age > entry.ttl;
 
     if (isStale) {
       // For stale-while-revalidate, return stale data but count as stale hit
-      if (entry.ttl * 2 > now - entry.createdAt) {
+      // Stale window is 2x TTL: first TTL is fresh, second TTL is stale-but-usable
+      if (age <= entry.ttl * 2) {
         this.staleHits++;
         return entry;
       }
@@ -71,8 +73,8 @@ export class APICache {
     const entry: CachedResponse = {
       ...response,
       tags: options?.tags || response.tags || [],
-      createdAt: Date.now(),
-      ttl: options?.ttl ?? this.defaultTTL,
+      createdAt: response.createdAt ?? Date.now(),
+      ttl: options?.ttl ?? response.ttl ?? this.defaultTTL,
     };
 
     // Generate ETag if not provided

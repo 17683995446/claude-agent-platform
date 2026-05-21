@@ -198,6 +198,9 @@ export class TokenManager {
 
   /** 设置警告阈值 */
   setAlertThreshold(threshold: number): void {
-    this.alertThreshold = Math.max(0, Math.min(1, threshold));
+    if (threshold < 0 || threshold > 1) {
+      throw new Error('Alert threshold must be between 0 and 1');
+    }
+    this.alertThreshold = threshold;
   }
 }

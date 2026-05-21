@@ -46,7 +46,12 @@ interface KnowledgeEdge {
 }
 
 let factIdCounter = 0;
+const MAX_FACT_ID = Number.MAX_SAFE_INTEGER - 1000;
 function newFactId(): string {
+  // Reset counter if approaching max safe integer to prevent overflow
+  if (factIdCounter >= MAX_FACT_ID) {
+    factIdCounter = 0;
+  }
   return `fact_${++factIdCounter}_${Date.now()}`;
 }
 

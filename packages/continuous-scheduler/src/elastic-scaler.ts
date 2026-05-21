@@ -204,7 +204,19 @@ export class ElasticScaler {
     const previous = this.currentInstances;
     const scaleBy = count ?? (this.options.strategy === 'immediate'
       ? this.options.maxScaleRate
-      : Math.ceil(this.options.maxScaleRate / 2));
+      : Math.max(1, Math.ceil(this.options.maxScaleRate / 2)));
+
+    // If count is 0, don't scale
+    if (scaleBy === 0) {
+      return {
+        success: false,
+        previousInstances: previous,
+        currentInstances: this.currentInstances,
+        scaledBy: 0,
+        timestamp: Date.now(),
+        reason: 'manual_scale_up',
+      };
+    }
 
     this.currentInstances = Math.min(
       this.options.maxInstances,
@@ -240,6 +252,18 @@ export class ElasticScaler {
     const scaleBy = count ?? (this.options.strategy === 'immediate'
       ? this.options.maxScaleRate
       : 1);
+
+    // If count is 0, don't scale
+    if (scaleBy === 0) {
+      return {
+        success: false,
+        previousInstances: previous,
+        currentInstances: this.currentInstances,
+        scaledBy: 0,
+        timestamp: Date.now(),
+        reason: 'manual_scale_down',
+      };
+    }
 
     this.currentInstances = Math.max(
       this.options.minInstances,

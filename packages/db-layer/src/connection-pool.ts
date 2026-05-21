@@ -117,17 +117,24 @@ export class DatabaseConnectionPool {
 
   private waitForAvailable(): Promise<DatabaseConnection> {
     return new Promise((resolve, reject) => {
+      const startTime = Date.now();
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error(`Acquire timeout: no available connection within ${this.config.acquireTimeoutMs}ms`));
       }, this.config.acquireTimeoutMs);
 
       const checkInterval = setInterval(() => {
+        // Check if draining - reject immediately
+        if (this._draining) {
+          cleanup();
+          reject(new Error('Pool is draining, cannot acquire connections'));
+          return;
+        }
         if (this.available.length > 0 || this.inUse.size < this.config.max) {
           cleanup();
           this.acquire().then(resolve).catch(reject);
         }
-      }, 50);
+      }, 10);
 
       const cleanup = () => {
         clearTimeout(timeout);
@@ -236,10 +243,15 @@ export class DatabaseConnectionPool {
       return isHealthy;
     });
 
-    // Replenish to min
-    while (this.available.length + this.inUse.size < this.config.min) {
-      this.createConnection().then(conn => this.available.push(conn));
-      break; // Create one at a time
+    // Replenish to min - create one at a time to avoid overwhelming the database
+    if (this.available.length + this.inUse.size < this.config.min) {
+      this.createConnection().then(conn => this.available.push(conn)).catch(err => {
+        this.emit({
+          type: 'error',
+          timestamp: Date.now(),
+          detail: `Failed to replenish connection: ${String(err)}`,
+        });
+      });
     }
   }
 
@@ -247,13 +259,14 @@ export class DatabaseConnectionPool {
     this.idleCheckTimer = setInterval(() => {
       const now = Date.now();
       this.available = this.available.filter(conn => {
+        // Only remove idle connections if we have more than min connections
         if (now - conn.lastUsedAt > this.config.idleTimeoutMs && this.getPoolSize() > this.config.min) {
           this.destroyConnection(conn);
           return false;
         }
         return true;
       });
-    }, this.config.idleTimeoutMs / 2);
+    }, Math.max(this.config.idleTimeoutMs / 2, 1000));
   }
 
   private stopIdleChecks(): void {

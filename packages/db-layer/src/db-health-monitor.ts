@@ -187,11 +187,13 @@ export class DatabaseHealthMonitor {
     let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
 
     // Check connection pool
-    const connectionUsage = this.connectionPoolMetrics.totalConnections > 0
-      ? this.connectionPoolMetrics.activeConnections / this.connectionPoolMetrics.totalConnections
+    const totalConnections = this.connectionPoolMetrics.totalConnections;
+    const activeConnections = this.connectionPoolMetrics.activeConnections;
+    const connectionUsage = totalConnections > 0
+      ? activeConnections / totalConnections
       : 0;
 
-    if (connectionUsage > this.config.maxConnectionUsage) {
+    if (connectionUsage >= this.config.maxConnectionUsage && totalConnections > 0) {
       status = 'degraded';
       recommendations.push('Connection pool usage is high. Consider increasing max connections.');
     }

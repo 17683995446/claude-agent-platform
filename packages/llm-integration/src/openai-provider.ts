@@ -316,11 +316,11 @@ export class OpenAIProvider implements LLMProvider {
 
             const chunk: StreamChunk = { model: data.model };
 
-            if (choice.delta.content) {
+            if (choice.delta?.content) {
               chunk.delta = { content: choice.delta.content };
             }
 
-            if (choice.delta.tool_calls) {
+            if (choice.delta?.tool_calls) {
               const toolCallDeltas = choice.delta.tool_calls.map((tc) => ({
                 id: tc.id,
                 name: tc.function?.name,

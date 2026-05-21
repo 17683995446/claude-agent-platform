@@ -57,12 +57,27 @@ export class TaskRecyclingManager {
 
   cacheResult(taskHash: string, result: unknown): void {
     // Check if we need to evict
-    if (this.cache.size >= this.options.maxCacheSize) {
+    if (this.cache.size >= this.options.maxCacheSize && this.options.maxCacheSize > 0) {
       this.evict();
     }
 
-    const serialized = JSON.stringify(result);
-    const size = new Blob([serialized]).size;
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(result);
+    } catch (err) {
+      // Handle circular references or other serialization errors
+      throw new Error(`Failed to serialize result for caching: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    
+    // Handle undefined serialization result (undefined becomes undefined, not a string)
+    if (serialized === undefined) {
+      serialized = 'null';
+    }
+    
+    // Use Buffer.byteLength for Node.js compatibility
+    const size = typeof Buffer !== 'undefined' 
+      ? Buffer.byteLength(serialized, 'utf8')
+      : new Blob([serialized]).size;
 
     this.cache.set(taskHash, {
       value: result,

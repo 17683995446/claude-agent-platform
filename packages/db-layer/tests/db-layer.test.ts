@@ -780,19 +780,19 @@ describe('TransactionManager', () => {
   test('should reject commit of non-active transaction', async () => {
     const tx = await txManager.beginTransaction();
     await txManager.commit(tx);
-    await expect(txManager.commit(tx)).rejects.toThrow('not active');
+    await expect(txManager.commit(tx)).rejects.toThrow('already finalized');
   });
 
   test('should reject rollback of non-active transaction', async () => {
     const tx = await txManager.beginTransaction();
     await txManager.commit(tx);
-    await expect(txManager.rollback(tx)).rejects.toThrow('not active');
+    await expect(txManager.rollback(tx)).rejects.toThrow('already finalized');
   });
 
   test('should reject double commit', async () => {
     const tx = await txManager.beginTransaction();
     await txManager.commit(tx);
-    await expect(txManager.commit(tx)).rejects.toThrow('not active');
+    await expect(txManager.commit(tx)).rejects.toThrow('already finalized');
   });
 
   test('should run in transaction with auto-commit', async () => {

@@ -63,15 +63,23 @@ export class IndexManager {
   async createIndex(table: string, columns: string[], options?: IndexOptions): Promise<string> {
     const indexType = options?.type ?? 'btree';
     const unique = options?.unique ?? false;
-    const name = options?.comment
-      ? `idx_${table}_${columns.join('_')}`
-      : `idx_${table}_${columns.join('_')}`;
+    // Validate table and column names to prevent SQL injection
+    const validNameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    if (!validNameRegex.test(table)) {
+      throw new Error(`Invalid table name: ${table}`);
+    }
+    for (const col of columns) {
+      if (!validNameRegex.test(col)) {
+        throw new Error(`Invalid column name: ${col}`);
+      }
+    }
+    const name = `idx_${table}_${columns.join('_')}`;
 
     const typeClause = indexType === 'btree' ? '' : `USING ${indexType.toUpperCase()}`;
     const uniqueClause = unique ? 'UNIQUE' : '';
     const ifNotExistsClause = options?.ifNotExists ? 'IF NOT EXISTS' : '';
 
-    const sql = `CREATE ${uniqueClause} INDEX ${ifNotExistsClause} ${name} ${typeClause} ON ${table} (${columns.join(', ')})`;
+    const sql = `CREATE ${uniqueClause} INDEX ${ifNotExistsClause} ${name} ${typeClause} ON ${table} (${columns.join(', ')})`.replace(/\s+/g, ' ').trim();
     await this.executeSqlFn(sql);
 
     const indexInfo: IndexInfo = {

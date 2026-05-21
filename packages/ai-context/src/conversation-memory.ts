@@ -172,9 +172,9 @@ export class ConversationMemory {
     const assistantMsgs = this.shortTermMemory.filter(m => m.role === 'assistant');
 
     const topics = this.extractTopics();
-    const keyDecisions = this.longTermMemory
+    const keyDecisions = this.episodicMemory
       .filter(m => m.importance > 0.7)
-      .map(m => m.summary);
+      .map(m => m.event);
 
     return {
       totalMessages: this.shortTermMemory.length + this.longTermMemory.reduce((s, m) => s + m.messageCount, 0),

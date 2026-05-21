@@ -163,11 +163,11 @@ export class ProviderRegistry {
   }
 
   /** 创建带回退链的请求执行器 */
-  async executeWithFallback(
+  async executeWithFallback<T>(
     request: { messages: unknown[]; model: string },
-    executeFn: (provider: LLMProvider) => Promise<unknown>,
+    executeFn: (provider: LLMProvider) => Promise<T>,
     providerNames?: string[],
-  ): Promise<{ result: unknown; providerName: string }> {
+  ): Promise<{ result: T; providerName: string }> {
     const names = providerNames ?? Array.from(this.providers.keys());
     let lastError: Error | undefined;
 

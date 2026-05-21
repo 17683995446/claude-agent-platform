@@ -238,11 +238,16 @@ export class ErrorDiagnosisEngine {
   private assessSeverity(errorMessage: string, category: ErrorCategory): DiagnosisResult['severity'] {
     const criticalKeywords = ['fatal', 'crash', 'unhandled', 'segfault', 'heap out of memory', 'maximum call stack'];
     const highKeywords = ['error', 'exception', 'failed', 'cannot', 'stack', 'overflow'];
+    const mediumKeywords = ['is not defined', 'not found', 'undefined', 'null', 'reference'];
 
     const lower = errorMessage.toLowerCase();
     if (criticalKeywords.some(k => lower.includes(k))) return 'critical';
+    if (category === 'syntax' || category === 'type') return 'high';
     if (highKeywords.some(k => lower.includes(k))) {
-      return category === 'syntax' || category === 'type' ? 'high' : 'medium';
+      return 'high';
+    }
+    if (mediumKeywords.some(k => lower.includes(k))) {
+      return 'medium';
     }
     return 'low';
   }
@@ -305,6 +310,24 @@ export class ErrorDiagnosisEngine {
           explanation: 'Missing packages can be resolved by installing dependencies',
         });
         break;
+      case 'runtime':
+        fixes.push({
+          description: 'Check for null/undefined values and add proper guards',
+          confidence: 0.6,
+          effort: 'medium',
+          explanation: 'Runtime errors often involve unexpected null or undefined values',
+        });
+        break;
+    }
+
+    // Ensure at least one fix suggestion
+    if (fixes.length === 0) {
+      fixes.push({
+        description: 'Review the error message and check the code at the indicated location',
+        confidence: 0.5,
+        effort: 'medium',
+        explanation: 'No specific fix pattern matched, general troubleshooting recommended',
+      });
     }
 
     return fixes;

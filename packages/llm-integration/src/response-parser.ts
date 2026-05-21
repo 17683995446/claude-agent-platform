@@ -61,20 +61,25 @@ export class ResponseParser {
       }
     }
 
-    // 尝试 3: 查找内容中的 JSON 对象
-    const jsonPatterns = [
-      /\{[\s\S]*?\}/g,  // JSON 对象 (non-greedy)
-      /\[[\s\S]*?\]/g,  // JSON 数组 (non-greedy)
-    ];
+    // 尝试 3: 查找内容中的 JSON 对象 (使用更精确的匹配)
+    // 首先尝试匹配 JSON 对象
+    const objectPattern = /\{[\s\S]*?\}/g;
+    let match;
+    while ((match = objectPattern.exec(content)) !== null) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        continue;
+      }
+    }
 
-    for (const pattern of jsonPatterns) {
-      const match = pattern.exec(content);
-      if (match) {
-        try {
-          return JSON.parse(match[0]);
-        } catch {
-          continue;
-        }
+    // 然后尝试匹配 JSON 数组
+    const arrayPattern = /\[[\s\S]*?\]/g;
+    while ((match = arrayPattern.exec(content)) !== null) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        continue;
       }
     }
 
