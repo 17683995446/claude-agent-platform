@@ -46,6 +46,7 @@ interface ComponentState {
   componentId: string;
   currentState: unknown;
   currentVersion: number;
+  versionCounter: number; // Monotonically increasing, never decreases on rollback
   snapshots: Snapshot[];
 }
 
@@ -61,12 +62,14 @@ export class StateRollbackManager {
         componentId,
         currentState: state,
         currentVersion: 0,
+        versionCounter: 0,
         snapshots: [],
       };
       this.components.set(componentId, entry);
     }
 
-    entry.currentVersion++;
+    entry.versionCounter++;
+    entry.currentVersion = entry.versionCounter;
     const serialized = JSON.stringify(state);
     const snapshot: Snapshot = {
       id: `snap-${++this.snapshotIdCounter}`,
@@ -120,6 +123,9 @@ export class StateRollbackManager {
     const previousVersion = entry.currentVersion;
 
     entry.currentState = snapshot.state;
+    // After rollback, set version to snapshot.version.
+    // The next createSnapshot will increment from here, which is correct
+    // since it represents a new branch from the rolled-back state.
     entry.currentVersion = snapshot.version;
 
     const duration = Date.now() - startTime;

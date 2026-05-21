@@ -106,43 +106,46 @@ export class SyncProtocol {
     this.syncInProgress = true;
     this.pendingSyncs++;
 
-    // Merge version vectors
-    const mergedVector: VersionVector = { ...this.versionVector };
-    for (const [node, version] of Object.entries(message.versionVector)) {
-      mergedVector[node] = Math.max(mergedVector[node] ?? 0, version);
-    }
-    this.versionVector = mergedVector;
-
-    // Detect conflicts
-    let conflictsDetected = 0;
-    for (const [node, version] of Object.entries(message.versionVector)) {
-      const localVersion = this.versionVector[node] ?? 0;
-      if (node !== this.nodeId && version > localVersion) {
-        conflictsDetected++;
+    try {
+      // Detect conflicts BEFORE merging version vectors
+      let conflictsDetected = 0;
+      for (const [node, version] of Object.entries(message.versionVector)) {
+        const localVersion = this.versionVector[node] ?? 0;
+        if (node !== this.nodeId && version > localVersion) {
+          conflictsDetected++;
+        }
       }
+
+      // Merge version vectors (after conflict detection)
+      const mergedVector: VersionVector = { ...this.versionVector };
+      for (const [node, version] of Object.entries(message.versionVector)) {
+        mergedVector[node] = Math.max(mergedVector[node] ?? 0, version);
+      }
+      this.versionVector = mergedVector;
+
+      const entriesMerged = Object.keys(message.state.counters).length +
+        Object.keys(message.state.sets).length +
+        Object.keys(message.state.registers).length +
+        Object.keys(message.state.maps).length;
+
+      this.lastSyncTime = Date.now();
+
+      const result: SyncResult = {
+        success: true,
+        entriesMerged,
+        conflictsDetected,
+        conflictsResolved: conflictsDetected,
+        duration: Date.now() - startTime,
+        strategy: message.strategy,
+        versionVector: { ...this.versionVector },
+      };
+
+      this.lastSyncResult = result;
+      return result;
+    } finally {
+      this.syncInProgress = false;
+      this.pendingSyncs--;
     }
-
-    const entriesMerged = Object.keys(message.state.counters).length +
-      Object.keys(message.state.sets).length +
-      Object.keys(message.state.registers).length +
-      Object.keys(message.state.maps).length;
-
-    this.syncInProgress = false;
-    this.pendingSyncs--;
-    this.lastSyncTime = Date.now();
-
-    const result: SyncResult = {
-      success: true,
-      entriesMerged,
-      conflictsDetected,
-      conflictsResolved: conflictsDetected,
-      duration: Date.now() - startTime,
-      strategy: message.strategy,
-      versionVector: { ...this.versionVector },
-    };
-
-    this.lastSyncResult = result;
-    return result;
   }
 
   resolveConflict(local: StateEntry, remote: StateEntry): StateEntry {

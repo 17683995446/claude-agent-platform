@@ -62,6 +62,7 @@ export class AutoRepairEngine {
   private repairsThisHour: number[] = [];
   private issueIdCounter = 0;
   private pendingApprovals = new Map<string, { issue: Issue; diagnosis: DiagnosisResult }>();
+  private bypassApproval = false;
 
   constructor(
     anomalyDetector: AnomalyDetector,
@@ -141,8 +142,8 @@ export class AutoRepairEngine {
     const diagnosis = this.diagnosisEngine.diagnose(symptoms);
 
     // Check if approval needed
-    if (this.config.autonomyLevel === 'manual_confirm' || 
-        (this.config.autonomyLevel === 'auto_with_approval' && issue.severity === 'critical')) {
+    if (!this.bypassApproval && (this.config.autonomyLevel === 'manual_confirm' || 
+        (this.config.autonomyLevel === 'auto_with_approval' && issue.severity === 'critical'))) {
       this.pendingApprovals.set(issue.id, { issue, diagnosis });
       const result: RepairResult = {
         success: false,
@@ -152,7 +153,15 @@ export class AutoRepairEngine {
         message: 'Awaiting manual approval',
         requiresApproval: true,
       };
-      this.recordRepair(issue, diagnosis, [], result);
+      // Don't count pending approvals against rate limit
+      this.repairHistory.push({
+        id: `repair-${Date.now()}`,
+        issue,
+        diagnosis,
+        strategiesAttempted: [],
+        result,
+        timestamp: Date.now(),
+      });
       return result;
     }
 
@@ -213,7 +222,13 @@ export class AutoRepairEngine {
       });
     }
     this.pendingApprovals.delete(issueId);
-    return this.triggerRepair({ ...pending.issue, severity: 'medium' });
+    // Preserve original severity instead of downgrading to 'medium'
+    this.bypassApproval = true;
+    try {
+      return this.triggerRepair({ ...pending.issue });
+    } finally {
+      this.bypassApproval = false;
+    }
   }
 
   getRepairHistory(): RepairRecord[] {

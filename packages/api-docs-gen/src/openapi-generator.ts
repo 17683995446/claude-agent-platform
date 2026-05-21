@@ -231,7 +231,13 @@ export class OpenAPIGenerator {
     }
 
     if (typeof obj === 'string') {
-      if (obj.includes('\n') || obj.includes(':') || obj.includes('#')) {
+      if (obj.includes('\n') || obj.includes(':') || obj.includes('#') ||
+          obj.startsWith('|') || obj.startsWith('>') || obj.startsWith('- ') ||
+          obj.startsWith('*') || obj.startsWith('&') || obj.startsWith('!') ||
+          obj.startsWith('%') || obj.startsWith('@') || obj.startsWith('`') ||
+          obj.startsWith('{') || obj.startsWith('[') ||
+          obj === '' || obj === 'true' || obj === 'false' || obj === 'null' ||
+          /^[0-9]/.test(obj)) {
         return `"${obj.replace(/"/g, '\\"')}"`;
       }
       return obj;

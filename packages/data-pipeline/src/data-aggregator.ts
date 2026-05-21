@@ -233,11 +233,11 @@ export class DataAggregator {
   private getBucketKey(date: Date, interval: TimeInterval): string {
     switch (interval) {
       case 'minute':
-        return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}-${date.getMinutes()}`;
+        return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}-${date.getHours()}-${date.getMinutes()}`;
       case 'hour':
-        return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+        return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}-${date.getHours()}`;
       case 'day':
-        return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
       case 'week': {
         const oneJan = new Date(date.getFullYear(), 0, 1);
         const week = Math.ceil(((date.getTime() - oneJan.getTime()) / 86400000 + oneJan.getDay() + 1) / 7);

@@ -235,8 +235,8 @@ export class ETLEngine {
           let success = false;
           let attempts = 0;
 
-          // Note: loop runs maxRetries+1 times (initial attempt + retries), which is intentional
           while (!success && attempts <= maxRetries) {
+            attempts++;
             try {
               for (const t of config.transform.transforms) {
                 if (t.transform === 'identity') continue;
@@ -260,7 +260,6 @@ export class ETLEngine {
               recordsTransformed++;
               success = true;
             } catch (e) {
-              attempts++;
               if (errorStrategy === 'skip') {
                 const errorMsg = `Transform error: ${(e as Error).message}`;
                 errors.push({ record, error: errorMsg });
@@ -286,7 +285,9 @@ export class ETLEngine {
                   this.deadLetterQueue.push({ record, error: errorMsg, config: config.name });
                 }
                 recordsSkipped++;
+                break;
               }
+              // errorStrategy === 'retry': continue the while loop
             }
           }
           onProgress?.({ phase: 'transform', current: i + 1, total: records.length, record });

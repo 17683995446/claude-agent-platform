@@ -71,6 +71,7 @@ export class WorkflowEngine {
   private instances = new Map<string, WorkflowInstance>();
   private stepExecutors = new Map<StepType, (step: WorkflowStep, variables: Record<string, unknown>) => Promise<unknown>>();
   private pauseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pauseResolvers = new Map<string, () => void>();
 
   constructor() {
     // Register default step executors
@@ -170,12 +171,21 @@ export class WorkflowEngine {
       const visited = new Set<string>();
 
       while (currentStepId) {
+        // Prevent infinite loops from cyclic step references
+        if (visited.has(currentStepId)) {
+          instance.status = 'failed';
+          instance.completedAt = new Date();
+          return { success: false, instanceId, error: `Infinite loop detected: step "${currentStepId}" already executed`, duration: Date.now() - startTime };
+        }
+
         if (instance.status === 'paused') {
-          // Wait for resume
+          // Wait for resume or cancel
           await new Promise<void>((resolve) => {
+            this.pauseResolvers.set(instanceId, resolve);
             const check = () => {
               if (instance.status !== 'paused') {
                 this.pauseTimers.delete(instanceId);
+                this.pauseResolvers.delete(instanceId);
                 resolve();
               } else {
                 const timerId = setTimeout(check, 50);
@@ -347,6 +357,12 @@ export class WorkflowEngine {
       if (timer) {
         clearTimeout(timer);
         this.pauseTimers.delete(instanceId);
+      }
+      // Resolve the pause promise so the workflow can check cancellation
+      const resolver = this.pauseResolvers.get(instanceId);
+      if (resolver) {
+        resolver();
+        this.pauseResolvers.delete(instanceId);
       }
     }
   }

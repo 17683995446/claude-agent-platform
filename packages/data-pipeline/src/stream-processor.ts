@@ -76,9 +76,12 @@ export class StreamProcessor<T> {
     }
 
     // Drain remaining
-    for (const promise of pending) {
+    while (pending.length > 0) {
+      const result = await Promise.race(pending);
+      const idx = pending.indexOf(result);
+      if (idx >= 0) pending.splice(idx, 1);
       this.activeCount--;
-      yield (await promise).value;
+      yield result.value;
     }
   }
 
@@ -144,56 +147,53 @@ export class StreamProcessor<T> {
 
   private async *processWithDebounce(source: AsyncIterable<T>): AsyncIterable<T> {
     const delayMs = this.debounceOptions!.delayMs;
+    const queue: T[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let pendingItem: T | null = null;
-    let resolveItem: ((value: T) => void) | null = null;
-
+    let resolve: (() => void) | null = null;
     let done = false;
+
+    const notify = () => {
+      if (resolve) {
+        const r = resolve;
+        resolve = null;
+        r();
+      }
+    };
 
     const processSource = async () => {
       for await (const item of source) {
-        pendingItem = item;
+        queue.push(item);
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          if (pendingItem !== null && resolveItem) {
-            const itemToResolve = pendingItem;
-            pendingItem = null;
-            resolveItem(itemToResolve);
-            resolveItem = null;
-          }
+          notify();
         }, delayMs);
       }
 
-      // Flush remaining
-      if (pendingItem !== null) {
-        if (timer) clearTimeout(timer);
-        await new Promise<void>(resolve => {
-          timer = setTimeout(() => {
-            if (pendingItem !== null && resolveItem) {
-              resolveItem(pendingItem);
-              pendingItem = null;
-              resolveItem = null;
-            }
-            resolve();
-          }, delayMs);
-        });
-      }
-
-      done = true;
-      // Resolve the waiting promise so the while loop can exit
-      if (resolveItem) {
-        resolveItem(null as unknown as T);
-        resolveItem = null;
+      // Source exhausted - flush any remaining after delay
+      if (timer) clearTimeout(timer);
+      if (queue.length > 0) {
+        timer = setTimeout(() => {
+          notify();
+        }, delayMs);
+      } else {
+        done = true;
+        notify();
       }
     };
 
     processSource();
 
-    while (!done) {
-      const item = await new Promise<T>((resolve) => {
-        resolveItem = resolve;
-      });
-      if (done) break;
+    while (true) {
+      if (queue.length === 0) {
+        if (done) break;
+        await new Promise<void>(r => { resolve = r; });
+        continue;
+      }
+
+      // Take the last item (debounce: only emit the most recent)
+      const item = queue.pop()!;
+      queue.length = 0; // clear queue
+      if (timer) clearTimeout(timer);
       yield item;
     }
   }

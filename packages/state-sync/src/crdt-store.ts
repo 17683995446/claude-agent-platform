@@ -304,7 +304,7 @@ export class LWWRegister implements CRDTRegister {
 export class LWWMap implements CRDTMap {
   id: string;
   type: 'lwwmap' = 'lwwmap';
-  private entries: Map<string, { value: unknown; timestamp: number; node: string }> = new Map();
+  private data: Map<string, { value: unknown; timestamp: number; node: string }> = new Map();
   private deletedKeys: Map<string, { timestamp: number; node: string }> = new Map();
   private nodeId: string;
 
@@ -316,12 +316,12 @@ export class LWWMap implements CRDTMap {
   set(key: string, value: unknown, timestamp?: number, node?: string): void {
     const ts = timestamp ?? Date.now();
     const n = node ?? this.nodeId;
-    const existing = this.entries.get(key);
+    const existing = this.data.get(key);
     const deleted = this.deletedKeys.get(key);
     const existingTs = existing ? existing.timestamp : 0;
     const deletedTs = deleted ? deleted.timestamp : 0;
     if (ts >= existingTs && ts >= deletedTs) {
-      this.entries.set(key, { value: structuredClone(value), timestamp: ts, node: n });
+      this.data.set(key, { value: structuredClone(value), timestamp: ts, node: n });
       this.deletedKeys.delete(key);
     }
   }
@@ -329,25 +329,25 @@ export class LWWMap implements CRDTMap {
   remove(key: string): void {
     const ts = Date.now();
     this.deletedKeys.set(key, { timestamp: ts, node: this.nodeId });
-    this.entries.delete(key);
+    this.data.delete(key);
   }
 
   get(key: string): unknown {
-    const entry = this.entries.get(key);
+    const entry = this.data.get(key);
     if (!entry) return undefined;
     return structuredClone(entry.value);
   }
 
   has(key: string): boolean {
-    return this.entries.has(key);
+    return this.data.has(key);
   }
 
   keys(): string[] {
-    return Array.from(this.entries.keys());
+    return Array.from(this.data.keys());
   }
 
   entries_list(): [string, unknown][] {
-    return Array.from(this.entries.entries()).map(([k, v]) => [k, structuredClone(v.value)]);
+    return Array.from(this.data.entries()).map(([k, v]) => [k, structuredClone(v.value)]);
   }
 
   entries(): [string, unknown][] {
@@ -356,7 +356,7 @@ export class LWWMap implements CRDTMap {
 
   getState(): Record<string, { value: unknown; timestamp: number; node: string }> {
     const result: Record<string, { value: unknown; timestamp: number; node: string }> = {};
-    for (const [key, entry] of this.entries) {
+    for (const [key, entry] of this.data) {
       result[key] = { value: structuredClone(entry.value), timestamp: entry.timestamp, node: entry.node };
     }
     // Include deleted keys with a special marker
@@ -371,18 +371,18 @@ export class LWWMap implements CRDTMap {
       const isDeleted = (remoteEntry as any)._deleted === true;
       if (isDeleted) {
         // Process deleted key from remote
-        const localEntry = this.entries.get(key);
+        const localEntry = this.data.get(key);
         const localDeleted = this.deletedKeys.get(key);
         const localTs = localEntry ? localEntry.timestamp : 0;
         const localDeletedTs = localDeleted ? localDeleted.timestamp : 0;
         if (remoteEntry.timestamp > localTs && remoteEntry.timestamp > localDeletedTs) {
-          this.entries.delete(key);
+          this.data.delete(key);
           this.deletedKeys.set(key, { timestamp: remoteEntry.timestamp, node: remoteEntry.node });
         }
       } else {
-        const local = this.entries.get(key);
+        const local = this.data.get(key);
         if (!local || remoteEntry.timestamp > local.timestamp || (remoteEntry.timestamp === local.timestamp && remoteEntry.node > local.node)) {
-          this.entries.set(key, { value: structuredClone(remoteEntry.value), timestamp: remoteEntry.timestamp, node: remoteEntry.node });
+          this.data.set(key, { value: structuredClone(remoteEntry.value), timestamp: remoteEntry.timestamp, node: remoteEntry.node });
           this.deletedKeys.delete(key);
         }
       }

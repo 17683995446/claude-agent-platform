@@ -55,6 +55,7 @@ export class PipelineBuilder<T> {
    * Batch data into arrays of specified size
    */
   batch(size: number, options?: BatchOptions): PipelineBuilder<T[]> {
+    if (size <= 0) throw new Error('Batch size must be positive');
     const timeout = options?.timeout;
     const partial = options?.partial ?? true;
 
@@ -71,9 +72,7 @@ export class PipelineBuilder<T> {
             buffer.length = 0;
             return batch;
           }
-          if (partial) {
-            return [];
-          }
+          // Buffer not full yet - skip this item (will be included in next batch)
           throw new FilterSkipError();
         };
       })(),

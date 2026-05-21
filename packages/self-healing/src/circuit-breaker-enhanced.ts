@@ -45,6 +45,7 @@ export class EnhancedCircuitBreaker {
   private lastSuccessTime: number | null = null;
   private lastStateChange: number | null = null;
   private openSince: number | null = null;
+  private lastOpenSince: number | null = null; // Preserved for recovery time calculation
   private config: CircuitBreakerConfig;
   private perErrorStats: Record<string, { count: number; lastSeen: number }> = {};
   private stateChangeCallbacks: ((state: CircuitState) => void)[] = [];
@@ -107,8 +108,8 @@ export class EnhancedCircuitBreaker {
     const recentFailures = recentCalls.filter((c) => !c.success).length;
     const failureRate = recentCalls.length > 0 ? recentFailures / recentCalls.length : 0;
 
-    const recoveryTime = this.openSince && this.lastStateChange && this.state !== 'open'
-      ? this.lastStateChange - this.openSince
+    const recoveryTime = (this.openSince || this.lastOpenSince) && this.lastStateChange && this.state !== 'open'
+      ? this.lastStateChange - (this.openSince ?? this.lastOpenSince!)
       : 0;
 
     return {
@@ -171,6 +172,7 @@ export class EnhancedCircuitBreaker {
     this.lastSuccessTime = null;
     this.lastStateChange = null;
     this.openSince = null;
+    this.lastOpenSince = null;
     this.callHistory = [];
     this.perErrorStats = {};
   }
@@ -238,6 +240,7 @@ export class EnhancedCircuitBreaker {
       this.failureCount = 0;
       this.halfOpenCalls = 0;
       this.halfOpenSuccesses = 0;
+      this.lastOpenSince = this.openSince;
       this.openSince = null;
     }
 

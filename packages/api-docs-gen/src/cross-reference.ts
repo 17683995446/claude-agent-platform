@@ -74,7 +74,7 @@ export class CrossReferenceBuilder {
           this.addUsage(impl, cls.fqn, mod.name, 'implements');
         }
 
-        // Track method calls
+        // Track method calls and parameter type usages
         for (const method of cls.methods) {
           this.refMap.callGraph.set(`${cls.fqn}.${method.name}`, {
             name: method.name,
@@ -82,6 +82,13 @@ export class CrossReferenceBuilder {
             calls: [],
             calledBy: [],
           });
+
+          // Track parameter type usages for class methods
+          for (const param of method.parameters) {
+            if (this.isCustomType(param.type)) {
+              this.addUsage(param.type, `${cls.fqn}.${method.name}`, mod.name, 'parameter');
+            }
+          }
         }
       }
 
@@ -117,6 +124,11 @@ export class CrossReferenceBuilder {
           this.refMap.dependents.set(dep, existing);
         }
       }
+    }
+
+    // Compute inheritance depths after all nodes are registered
+    for (const [fqn, node] of this.refMap.inheritance) {
+      node.depth = this.computeInheritanceDepth(fqn, new Set());
     }
 
     return this.refMap;
@@ -219,6 +231,15 @@ export class CrossReferenceBuilder {
     if (!type) return false;
     const primitives = ['string', 'number', 'boolean', 'any', 'unknown', 'void', 'null', 'undefined', 'never', 'object', 'symbol', 'bigint'];
     return !primitives.includes(type) && /^[A-Z]/.test(type);
+  }
+
+  private computeInheritanceDepth(fqn: string, visited: Set<string>): number {
+    if (visited.has(fqn)) return 0;
+    visited.add(fqn);
+    const node = this.refMap.inheritance.get(fqn);
+    if (!node?.parent) return 0;
+    const parentDepth = this.computeInheritanceDepth(node.parent, visited);
+    return parentDepth + 1;
   }
 
   private generateClassDiagram(name: string): string {

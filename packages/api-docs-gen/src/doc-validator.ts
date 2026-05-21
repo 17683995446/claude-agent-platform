@@ -74,6 +74,16 @@ export class DocValidator {
 
     const coverage = this.checkCoverage(docModel);
 
+    // Execute custom validation rules
+    for (const rule of this.rules) {
+      try {
+        const ruleErrors = rule.validate(docModel);
+        errors.push(...ruleErrors);
+      } catch {
+        // Skip broken rules gracefully
+      }
+    }
+
     return {
       isValid: errors.length === 0,
       errors,

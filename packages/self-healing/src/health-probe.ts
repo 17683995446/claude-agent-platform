@@ -54,6 +54,7 @@ interface HealthHistoryEntry {
 export class HealthProbe {
   private probes: ProbeEntry[] = [];
   private healthHistory: HealthHistoryEntry[] = [];
+  private lastComponentHealth: Record<string, ComponentHealth> = {};
   private maxHistorySize = 1000;
 
   addProbe(name: string, probe: HealthProbeFn, type: ProbeType = 'custom'): void {
@@ -139,10 +140,10 @@ export class HealthProbe {
 
     // Determine overall status
     let status: HealthStatus;
-    if (score >= 80) status = 'healthy';
+    if (totalProbes === 0) status = 'healthy'; // No probes = assume healthy
+    else if (score >= 80) status = 'healthy';
     else if (score >= 50) status = 'degraded';
-    else if (score > 0) status = 'unhealthy';
-    else status = 'unknown';
+    else status = 'unhealthy';
 
     const report: HealthReport = {
       status,
@@ -151,6 +152,9 @@ export class HealthProbe {
       timestamp: Date.now(),
       probes: probeResults,
     };
+
+    // Store component health for later retrieval
+    this.lastComponentHealth = { ...components };
 
     this.healthHistory.push({
       score,
@@ -201,8 +205,7 @@ export class HealthProbe {
   }
 
   getComponentHealth(componentId: string): ComponentHealth | null {
-    // Return last known component health (simplified)
-    return null;
+    return this.lastComponentHealth[componentId] ?? null;
   }
 
   getHealthHistory(): HealthHistoryEntry[] {

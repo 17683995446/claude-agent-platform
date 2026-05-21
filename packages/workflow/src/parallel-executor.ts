@@ -78,14 +78,20 @@ export class ParallelExecutor {
     // Overall timeout
     let overallTimer: ReturnType<typeof setTimeout> | null = null;
     let overallTimedOut = false;
+    let overallReject!: (reason: Error) => void;
+    const overallTimeoutPromise = new Promise<never>((_, reject) => { overallReject = reject; });
 
     if (opts.overallTimeout > 0) {
-      overallTimer = setTimeout(() => { overallTimedOut = true; }, opts.overallTimeout);
+      overallTimer = setTimeout(() => {
+        overallTimedOut = true;
+        overallReject(new Error('Overall timeout exceeded'));
+      }, opts.overallTimeout);
     }
 
     // Queue-based execution with concurrency limit
     const queue = [...sortedTasks];
     const executing = new Set<Promise<void>>();
+    const allStarted = new Set<Promise<void>>(); // Track all started promises to ensure cleanup
 
     const processTask = async (task: ParallelTask): Promise<void> => {
       if (overallTimedOut) return;
@@ -103,12 +109,17 @@ export class ParallelExecutor {
           const taskPromise = task.execute();
           let taskTimerId: ReturnType<typeof setTimeout>;
 
-          result = await Promise.race([
+          const races: Promise<unknown>[] = [
             taskPromise,
             new Promise<never>((_, reject) => {
               taskTimerId = setTimeout(() => reject(new Error(`Task "${task.id}" timed out`)), opts.taskTimeout);
             }),
-          ]);
+          ];
+          if (opts.overallTimeout > 0) {
+            races.push(overallTimeoutPromise);
+          }
+
+          result = await Promise.race(races);
           clearTimeout(taskTimerId);
 
           success = true;
@@ -153,8 +164,9 @@ export class ParallelExecutor {
       // Fill up to concurrency limit
       while (queue.length > 0 && executing.size < opts.concurrency && !overallTimedOut) {
         const task = queue.shift()!;
-        const promise = processTask(task).then(() => { executing.delete(promise); });
+        const promise = processTask(task).then(() => { executing.delete(promise); allStarted.delete(promise); });
         executing.add(promise);
+        allStarted.add(promise);
       }
 
       if (executing.size > 0) {
@@ -162,8 +174,8 @@ export class ParallelExecutor {
       }
     }
 
-    // Wait for all executing tasks to complete
-    await Promise.allSettled(executing);
+    // Wait for all started tasks to complete (including those already removed from executing)
+    await Promise.allSettled(allStarted);
 
     if (overallTimer) clearTimeout(overallTimer);
 

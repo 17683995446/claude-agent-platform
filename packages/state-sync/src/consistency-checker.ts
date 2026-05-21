@@ -181,12 +181,20 @@ export class ConsistencyChecker {
     }
 
     try {
-      const nodeId = issue.nodeId ?? '';
+      const nodeId = issue.nodeId;
+      if (!nodeId) {
+        const result: RepairResult = {
+          success: false,
+          issue,
+          repairedAt: Date.now(),
+          error: `Cannot repair issue without a nodeId`,
+        };
+        this.repairHistory.push(result);
+        return result;
+      }
       const state = this.nodeStates.get(nodeId) ?? {};
       const changes = invariant.repair(state);
-      if (nodeId) {
-        this.nodeStates.set(nodeId, { ...state, ...changes });
-      }
+      this.nodeStates.set(nodeId, { ...state, ...changes });
 
       const result: RepairResult = {
         success: true,

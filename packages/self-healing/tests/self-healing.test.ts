@@ -1115,7 +1115,7 @@ describe('HealthProbe', () => {
     probe.addProbe('p2', async () => ({ healthy: false }));
     const report = await probe.checkHealth();
     expect(report.score).toBe(0);
-    expect(report.status).toBe('unknown');
+    expect(report.status).toBe('unhealthy');
   });
 
   test('should handle probe that throws', async () => {

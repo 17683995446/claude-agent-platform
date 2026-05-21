@@ -134,6 +134,7 @@ export class DataTransformEngine {
 
     // Object transforms
     this.transforms.set('pick', (d: unknown) => {
+      if (d == null || typeof d !== 'object') return d;
       const { obj, keys } = d as any;
       if (typeof obj !== 'object' || obj === null) return obj;
       const result: Record<string, unknown> = {};
@@ -143,6 +144,7 @@ export class DataTransformEngine {
       return result;
     });
     this.transforms.set('omit', (d: unknown) => {
+      if (d == null || typeof d !== 'object') return d;
       const { obj, keys } = d as any;
       if (typeof obj !== 'object' || obj === null) return obj;
       const result = { ...obj };
@@ -153,6 +155,8 @@ export class DataTransformEngine {
     });
     this.transforms.set('merge', (d: unknown) => {
       const { target, source } = d as any;
+      if (target == null) return source ?? {};
+      if (source == null) return target;
       return { ...target, ...source };
     });
     this.transforms.set('rename', (d: unknown) => {
@@ -232,11 +236,13 @@ export class DataTransformEngine {
     this.transforms.set('abs', (d: unknown) => Math.abs(Number(d) || 0));
     this.transforms.set('min', (d: unknown) => {
       const values = Array.isArray(d) ? d.map(Number) : [Number(d)];
-      return Math.min(...values.filter(n => !isNaN(n)));
+      const valid = values.filter(n => !isNaN(n));
+      return valid.length === 0 ? 0 : Math.min(...valid);
     });
     this.transforms.set('max', (d: unknown) => {
       const values = Array.isArray(d) ? d.map(Number) : [Number(d)];
-      return Math.max(...values.filter(n => !isNaN(n)));
+      const valid = values.filter(n => !isNaN(n));
+      return valid.length === 0 ? 0 : Math.max(...valid);
     });
     this.transforms.set('sum', (d: unknown) => {
       const values = Array.isArray(d) ? d.map(Number) : [Number(d)];

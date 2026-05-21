@@ -131,21 +131,23 @@ export class WorkflowEventEmitter {
       let processedEvent: WorkflowEvent | null = { ...event };
       for (const middleware of this.middlewares) {
         processedEvent = middleware(processedEvent);
-        if (!processedEvent) continue;
+        if (!processedEvent) break;
       }
 
-      const typeHandlers = this.handlers.get(processedEvent.type) ?? [];
-      const allHandlers = [...typeHandlers, ...this.wildcardHandlers];
+      if (processedEvent) {
+        const typeHandlers = this.handlers.get(processedEvent.type) ?? [];
+        const allHandlers = [...typeHandlers, ...this.wildcardHandlers];
 
-      await Promise.allSettled(
-        allHandlers.map(async (handler) => {
-          try {
-            await handler(processedEvent);
-          } catch {
-            // Error isolation
-          }
-        })
-      );
+        await Promise.allSettled(
+          allHandlers.map(async (handler) => {
+            try {
+              await handler(processedEvent!);
+            } catch {
+              // Error isolation
+            }
+          })
+        );
+      }
     }
   }
 

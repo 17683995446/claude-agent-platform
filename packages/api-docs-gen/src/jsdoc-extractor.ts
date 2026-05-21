@@ -64,7 +64,9 @@ export class JSDocExtractor {
     const cleanedLines: string[] = [];
 
     for (const line of lines) {
-      const trimmed = line.replace(/^\s*\*\s?/, '').replace(/^\/\*\*/, '').replace(/\*\/$/, '');
+      let trimmed = line.replace(/^\s*\*\s?/, '').replace(/^\/\*\*/, '').replace(/\*\/$/, '').trim();
+      // Handle case where */ was split: first replace stripped ' *', leaving '/'
+      if (trimmed === '/') trimmed = '';
       cleanedLines.push(trimmed);
     }
 

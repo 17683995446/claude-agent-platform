@@ -34,9 +34,9 @@ export class EventSourcedStore {
     const stream = this.eventStreams.get(event.aggregateId) ?? [];
     const versionedEvent: DomainEvent = {
       ...event,
-      eventId: event.eventId || `evt_${this.eventCounter}_${Date.now()}`,
+      eventId: event.eventId ?? `evt_${this.eventCounter}_${Date.now()}`,
       version: stream.length + 1,
-      timestamp: event.timestamp || Date.now(),
+      timestamp: event.timestamp ?? Date.now(),
     };
     stream.push(versionedEvent);
     this.eventStreams.set(event.aggregateId, stream);

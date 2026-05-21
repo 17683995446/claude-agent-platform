@@ -73,7 +73,8 @@ export class TypeResolver {
     let resolved = typeString;
 
     for (const [param, concrete] of typeParams) {
-      const regex = new RegExp(`\\b${param}\\b`, 'g');
+      const escaped = param.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\b${escaped}\\b`, 'g');
       resolved = resolved.replace(regex, concrete);
     }
 
@@ -149,8 +150,8 @@ export class TypeResolver {
       prev = simplified;
 
       // Simplify Pick/Omit patterns
-      simplified = simplified.replace(/Pick<([^,>]+),\s*[^>]+>/g, '$1');
-      simplified = simplified.replace(/Omit<([^,>]+),\s*[^>]+>/g, '$1');
+      simplified = simplified.replace(/Pick<([^,>]+(?:<[^>]*>)?(?:\s*,\s*[^,>]+(?:<[^>]*>)?)*)\s*,\s*[^>]+>/g, '$1');
+      simplified = simplified.replace(/Omit<([^,>]+(?:<[^>]*>)?(?:\s*,\s*[^,>]+(?:<[^>]*>)?)*)\s*,\s*[^>]+>/g, '$1');
       simplified = simplified.replace(/Partial<([^>]+)>/g, '$1');
       simplified = simplified.replace(/Required<([^>]+)>/g, '$1');
       simplified = simplified.replace(/Readonly<([^>]+)>/g, '$1');
@@ -239,14 +240,14 @@ export class TypeResolver {
     // Expand common generic patterns
     let expanded = type;
 
+    // ReadonlyArray<T> -> readonly T[] (must be before Array<T> to avoid partial match)
+    expanded = expanded.replace(/ReadonlyArray<([^>]+)>/g, (_, inner) => {
+      return `readonly ${this.expandGenerics(inner, maxDepth, currentDepth + 1)}[]`;
+    });
+
     // Array<T> -> T[]
     expanded = expanded.replace(/Array<([^>]+)>/g, (_, inner) => {
       return `${this.expandGenerics(inner, maxDepth, currentDepth + 1)}[]`;
-    });
-
-    // ReadonlyArray<T> -> readonly T[]
-    expanded = expanded.replace(/ReadonlyArray<([^>]+)>/g, (_, inner) => {
-      return `readonly ${this.expandGenerics(inner, maxDepth, currentDepth + 1)}[]`;
     });
 
     return expanded;

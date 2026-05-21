@@ -158,6 +158,9 @@ export class IncidentManager {
     const record = this.incidents.get(incidentId);
     if (!record) return;
 
+    // Don't escalate if already at maximum severity
+    if (record.incident.severity === 'P1') return;
+
     // Increase severity
     const severityOrder: IncidentSeverity[] = ['P4', 'P3', 'P2', 'P1'];
     const currentIndex = severityOrder.indexOf(record.incident.severity);

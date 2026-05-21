@@ -112,7 +112,7 @@ export class ReplicationManager {
     // Use writeQuorumDefault if set, otherwise calculate from replicationFactor
     let requiredQuorum: number;
     if (this.writeQuorumDefault.type === 'all') {
-      requiredQuorum = this.replicationFactor;
+      requiredQuorum = aliveNodes.length;
     } else if (this.writeQuorumDefault.type === 'one') {
       requiredQuorum = 1;
     } else {
@@ -156,10 +156,10 @@ export class ReplicationManager {
     }
 
     // Update average latency
-    const totalLat = this.stats.averageLatency * (this.stats.successfulReplications - 1) + duration;
-    this.stats.averageLatency = this.stats.successfulReplications > 0
-      ? totalLat / this.stats.successfulReplications
-      : 0;
+    if (success) {
+      const prevTotal = this.stats.averageLatency * (this.stats.successfulReplications - 1);
+      this.stats.averageLatency = (prevTotal + duration) / this.stats.successfulReplications;
+    }
     this.stats.lastReplicationTime = Date.now();
 
     return {

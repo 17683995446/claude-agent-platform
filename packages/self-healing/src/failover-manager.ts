@@ -216,6 +216,8 @@ export class FailoverManager {
       const isHealthy = await entry.primary.healthCheck();
       if (!isHealthy) return;
 
+      const previousInstance = entry.activeInstance;
+
       if (entry.standby) {
         await entry.standby.stop();
       }
@@ -226,7 +228,7 @@ export class FailoverManager {
       this.failoverHistory.push({
         componentId,
         mode: entry.mode,
-        fromInstance: entry.activeInstance,
+        fromInstance: previousInstance,
         toInstance: 'primary',
         timestamp: Date.now(),
         success: true,

@@ -83,6 +83,7 @@ export class StateStore {
       clearTimeout(existingTimer);
       this.ttlTimers.delete(key);
     }
+    this.versions.delete(key);
     return this.store.delete(key);
   }
 

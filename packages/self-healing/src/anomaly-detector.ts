@@ -46,6 +46,7 @@ interface MetricData {
 export class AnomalyDetector {
   private metrics = new Map<string, MetricData>();
   private anomalyHistory: AnomalyReport[] = [];
+  private maxAnomalyHistorySize = 1000;
 
   private defaultOptions: Required<MetricOptions> = {
     windowSize: 100,
@@ -95,6 +96,10 @@ export class AnomalyDetector {
       reports.push(...this.detectPattern(data));
     }
     this.anomalyHistory.push(...reports);
+    // Trim anomaly history to prevent unbounded growth
+    if (this.anomalyHistory.length > this.maxAnomalyHistorySize) {
+      this.anomalyHistory = this.anomalyHistory.slice(-this.maxAnomalyHistorySize);
+    }
     return reports;
   }
 
@@ -115,7 +120,11 @@ export class AnomalyDetector {
     if (!data.baseline) {
       this.updateBaseline(metric);
     }
-    return data.baseline!;
+    return data.baseline ?? {
+      mean: 0, stdDev: 0, min: 0, max: 0,
+      median: 0, q1: 0, q3: 0, iqr: 0,
+      sampleCount: 0, lastUpdated: 0,
+    };
   }
 
   updateBaseline(metric: string): void {

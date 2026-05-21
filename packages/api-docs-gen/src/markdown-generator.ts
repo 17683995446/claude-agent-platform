@@ -245,7 +245,7 @@ export class MarkdownGenerator {
     }
 
     const asyncPart = fnDoc.isAsync ? 'async ' : '';
-    const generatorPart = fnDoc.isGenerator ? '* ' : '';
+    const generatorPart = fnDoc.isGenerator ? '*' : '';
     const typeParamsPart = fnDoc.typeParameters.length > 0 ? `<${fnDoc.typeParameters.join(', ')}>` : '';
     const params = fnDoc.parameters.map((p) => {
       const rest = p.isRest ? '...' : '';
@@ -255,7 +255,7 @@ export class MarkdownGenerator {
     }).join(', ');
 
     lines.push(`\`\`\`typescript`);
-    lines.push(`${asyncPart}function${generatorPart} ${fnDoc.name}${typeParamsPart}(${params}): ${fnDoc.returnType}`);
+    lines.push(`${asyncPart}function${generatorPart ? generatorPart + ' ' : ' '}${fnDoc.name}${typeParamsPart}(${params}): ${fnDoc.returnType}`);
     lines.push(`\`\`\``);
     lines.push('');
 
