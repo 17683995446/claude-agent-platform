@@ -73,11 +73,17 @@ export class Sandbox {
     // Previously, a path like "/tmp/../../etc/passwd" would pass the whitelist
     // check for "/tmp" before the traversal check caught it.
     // Decode URL-encoded characters first to prevent bypass via %2e%2e%2f etc.
+    // BUG-011 FIX: Decode recursively to handle double/triple URL encoding attacks.
+    // Previously, %252e%252e would decode to %2e%2e (still encoded) and bypass detection.
     let decoded = path;
-    try {
-      decoded = decodeURIComponent(path);
-    } catch {
-      // If decoding fails, use the original path
+    let prev = '';
+    while (prev !== decoded) {
+      prev = decoded;
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        break;
+      }
     }
     const normalized = decoded.replace(/\\/g, '/').replace(/\/+/g, '/');
     if (normalized.includes('..')) {
