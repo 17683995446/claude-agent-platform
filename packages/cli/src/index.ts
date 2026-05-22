@@ -34,7 +34,10 @@ const colors = {
 };
 
 function colorize(text: string, color: keyof typeof colors): string {
-  return `${colors[color]}${text}${colors.reset}`;
+  // BUG-005 [MEDIUM]: Handle invalid color keys gracefully
+  // FIX: Added fallback to 'reset' if color is invalid
+  const colorCode = colors[color] ?? colors.reset;
+  return `${colorCode}${text}${colors.reset}`;
 }
 
 function bold(text: string): string {
@@ -50,13 +53,23 @@ export class ProgressBar {
   private label: string;
 
   constructor(total: number, label: string = '', width: number = 40) {
-    this.total = total;
-    this.width = width;
+    // BUG-001 [HIGH]: Validate total is a positive finite number
+    // FIX: Added validation to ensure total is positive and finite
+    if (!Number.isFinite(total) || total < 0) {
+      this.total = 0;
+    } else {
+      this.total = Math.floor(total);
+    }
+    // BUG-003 [MEDIUM]: Validate width is positive
+    // FIX: Added validation to ensure width is positive
+    this.width = Number.isFinite(width) && width > 0 ? Math.floor(width) : 40;
     this.label = label;
   }
 
   update(current: number): void {
-    this.current = Math.min(current, this.total);
+    // BUG-002 [HIGH]: Handle negative current values
+    // FIX: Added Math.max to ensure current is non-negative
+    this.current = Math.max(0, Math.min(current, this.total));
     this.render();
   }
 
@@ -70,8 +83,10 @@ export class ProgressBar {
   }
 
   private render(): void {
+    // BUG-004 [MEDIUM]: Handle division by zero and ensure non-negative filled width
+    // FIX: Added check for total > 0 and Math.max for filled width
     const progress = this.total > 0 ? this.current / this.total : 0;
-    const filled = Math.round(this.width * progress);
+    const filled = Math.max(0, Math.min(Math.round(this.width * progress), this.width));
     const empty = this.width - filled;
     const percent = Math.round(progress * 100);
 
@@ -380,7 +395,9 @@ const askCommand: CommandHandler = {
       return { success: false, duration: 0 };
     });
 
-    progress.complete();
+    // BUG-011 [HIGH]: progress.complete() was calling on wrong object
+    // FIX: Call progressBar.complete() instead of progress.complete()
+    progressBar.complete();
     console.log('');
 
     // Show results
@@ -434,30 +451,57 @@ export class ClaudeAgentCLI {
 
   /** Parse command line arguments */
   parseArgs(argv: string[]): { command: CLICommand | null; args: string[]; flags: Record<string, unknown> } {
+    // BUG-006 [HIGH]: Handle undefined/null argv
+    // FIX: Added null check and default to empty array
+    if (!argv || !Array.isArray(argv)) {
+      return { command: null, args: [], flags: {} };
+    }
+
     const rawArgs = argv.slice(2); // Remove 'bun' and script path
 
     const flags: Record<string, unknown> = {};
     const positional: string[] = [];
 
     for (const arg of rawArgs) {
+      // BUG-007 [MEDIUM]: Handle non-string arguments
+      // FIX: Skip non-string arguments
+      if (typeof arg !== 'string') continue;
+      
       if (arg.startsWith('--')) {
         const eqIndex = arg.indexOf('=');
         if (eqIndex !== -1) {
           const key = arg.slice(2, eqIndex);
-          const value = arg.slice(eqIndex + 1);
-          flags[key] = value;
+          // BUG-008 [MEDIUM]: Handle empty key in --=value case
+          // FIX: Skip empty keys
+          if (key.length > 0) {
+            const value = arg.slice(eqIndex + 1);
+            flags[key] = value;
+          }
         } else {
           const key = arg.slice(2);
-          flags[key] = true;
+          // BUG-008 [MEDIUM]: Handle -- case (empty key)
+          // FIX: Skip empty keys
+          if (key.length > 0) {
+            flags[key] = true;
+          }
         }
       } else if (arg.startsWith('-')) {
-        flags[arg.slice(1)] = true;
+        const key = arg.slice(1);
+        // BUG-009 [MEDIUM]: Handle - case (empty key)
+        // FIX: Skip empty keys
+        if (key.length > 0) {
+          flags[key] = true;
+        }
       } else {
         positional.push(arg);
       }
     }
 
-    const command = positional[0] as CLICommand | null;
+    // BUG-010 [HIGH]: Type casting is safe here, validation happens in run()
+    // FIX: Keep command as-is, let run() handle validation
+    // BUG-012 [MEDIUM]: Return null instead of undefined for no command
+    // FIX: Explicitly return null when positional is empty
+    const command = positional.length > 0 ? positional[0] as CLICommand : null;
     const args = positional.slice(1);
 
     return { command, args, flags };

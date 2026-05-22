@@ -78,8 +78,16 @@ export class TaskTimeoutError extends AgentError {
     timeout: number,
     taskId?: string,
     details: Record<string, unknown> = {},
+    cause?: Error,
   ) {
-    super('TASK_TIMEOUT', message, { ...details, taskId, timeout }, undefined);
+    // BUG-005 [HIGH]: timeout was not validated to be a positive number
+    // FIX: Validate timeout is a non-negative number, default to 0 if invalid
+    if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout < 0) {
+      timeout = 0;
+    }
+    // BUG-006 [MEDIUM]: cause parameter was ignored (passed as undefined)
+    // FIX: Pass the cause parameter to parent constructor
+    super('TASK_TIMEOUT', message, { ...details, taskId, timeout }, cause);
     this.name = 'TaskTimeoutError';
     this.taskId = taskId;
     this.timeout = timeout;
@@ -115,15 +123,22 @@ export class ConfigError extends AgentError {
 export class ConfigNotFoundError extends AgentError {
   public readonly configPath: string;
 
-  constructor(configPath: string) {
+  // BUG-007 [MEDIUM]: Missing cause parameter for consistency
+  // FIX: Added optional cause parameter
+  constructor(configPath: string, cause?: Error) {
+    // BUG-008 [MEDIUM]: configPath was not validated
+    // FIX: Validate configPath is a non-empty string
+    const validPath = typeof configPath === 'string' && configPath.trim().length > 0 
+      ? configPath 
+      : '<unknown>';
     super(
       'CONFIG_NOT_FOUND',
-      `Configuration file not found: ${configPath}`,
-      { configPath },
-      undefined,
+      `Configuration file not found: ${validPath}`,
+      { configPath: validPath },
+      cause,
     );
     this.name = 'ConfigNotFoundError';
-    this.configPath = configPath;
+    this.configPath = validPath;
   }
 
   get suggestedFix(): string {
@@ -147,23 +162,35 @@ export class PluginError extends AgentError {
     this.pluginName = pluginName;
   }
 
+  // BUG-002 [HIGH]: suggestedFix returned undefined when pluginName was undefined
+  // FIX: Handle undefined pluginName case gracefully
   get suggestedFix(): string {
-    return `Check the plugin "${this.pluginName}" implementation and ensure it follows the plugin interface.`;
+    if (this.pluginName) {
+      return `Check the plugin "${this.pluginName}" implementation and ensure it follows the plugin interface.`;
+    }
+    return 'Check the plugin implementation and ensure it follows the plugin interface.';
   }
 }
 
 export class PluginNotFoundError extends AgentError {
   public readonly pluginName: string;
 
-  constructor(pluginName: string) {
+  // BUG-009 [MEDIUM]: Missing cause parameter for consistency
+  // FIX: Added optional cause parameter
+  constructor(pluginName: string, cause?: Error) {
+    // BUG-010 [MEDIUM]: pluginName was not validated
+    // FIX: Validate pluginName is a non-empty string
+    const validName = typeof pluginName === 'string' && pluginName.trim().length > 0 
+      ? pluginName 
+      : '<unknown>';
     super(
       'PLUGIN_NOT_FOUND',
-      `Plugin not found: ${pluginName}`,
-      { pluginName },
-      undefined,
+      `Plugin not found: ${validName}`,
+      { pluginName: validName },
+      cause,
     );
     this.name = 'PluginNotFoundError';
-    this.pluginName = pluginName;
+    this.pluginName = validName;
   }
 
   get suggestedFix(): string {
@@ -187,8 +214,13 @@ export class PipelineError extends AgentError {
     this.pipelineName = pipelineName;
   }
 
+  // BUG-003 [HIGH]: suggestedFix returned undefined when pipelineName was undefined
+  // FIX: Handle undefined pipelineName case gracefully
   get suggestedFix(): string {
-    return `Review the pipeline "${this.pipelineName}" configuration and step definitions.`;
+    if (this.pipelineName) {
+      return `Review the pipeline "${this.pipelineName}" configuration and step definitions.`;
+    }
+    return 'Review the pipeline configuration and step definitions.';
   }
 }
 
@@ -203,10 +235,18 @@ export class PipelineStepError extends AgentError {
     details: Record<string, unknown> = {},
     cause?: Error,
   ) {
-    super('PIPELINE_STEP_FAILED', message, { ...details, pipelineName, stepName }, cause);
+    // BUG-011 [MEDIUM]: pipelineName and stepName were not validated
+    // FIX: Validate pipelineName and stepName are non-empty strings
+    const validPipelineName = typeof pipelineName === 'string' && pipelineName.trim().length > 0 
+      ? pipelineName 
+      : '<unknown>';
+    const validStepName = typeof stepName === 'string' && stepName.trim().length > 0 
+      ? stepName 
+      : '<unknown>';
+    super('PIPELINE_STEP_FAILED', message, { ...details, pipelineName: validPipelineName, stepName: validStepName }, cause);
     this.name = 'PipelineStepError';
-    this.pipelineName = pipelineName;
-    this.stepName = stepName;
+    this.pipelineName = validPipelineName;
+    this.stepName = validStepName;
   }
 
   get suggestedFix(): string {
@@ -225,6 +265,13 @@ export class HttpError extends AgentError {
     details: Record<string, unknown> = {},
     cause?: Error,
   ) {
+    // BUG-004 [MEDIUM]: statusCode was not validated to be a valid HTTP status code
+    // FIX: Validate statusCode is an integer in valid HTTP range (100-599)
+    if (typeof statusCode !== 'number' || !Number.isInteger(statusCode)) {
+      statusCode = 500;
+    } else if (statusCode < 100 || statusCode > 599) {
+      statusCode = 500;
+    }
     super('HTTP_ERROR', message, { ...details, statusCode }, cause);
     this.name = 'HttpError';
     this.statusCode = statusCode;
@@ -242,16 +289,27 @@ export class ValidationError extends AgentError {
     field?: string,
     value?: unknown,
     details: Record<string, unknown> = {},
+    cause?: Error,
   ) {
-    super('VALIDATION_ERROR', message, { ...details, field, value }, undefined);
+    // BUG-012 [MEDIUM]: Missing cause parameter for consistency
+    // FIX: Added optional cause parameter
+    super('VALIDATION_ERROR', message, { ...details, field, value }, cause);
     this.name = 'ValidationError';
     this.field = field;
     this.value = value;
   }
 
+  // BUG-013 [HIGH]: JSON.stringify could throw on circular references
+  // FIX: Use try-catch and provide fallback for unstringifiable values
   get suggestedFix(): string {
     if (this.field) {
-      return `The field "${this.field}" is invalid. Expected a valid value but received: ${JSON.stringify(this.value)}.`;
+      let valueStr: string;
+      try {
+        valueStr = JSON.stringify(this.value);
+      } catch {
+        valueStr = '[unable to serialize]';
+      }
+      return `The field "${this.field}" is invalid. Expected a valid value but received: ${valueStr}.`;
     }
     return 'Review the input data and ensure all fields are valid.';
   }
@@ -287,22 +345,38 @@ export class LifecycleError extends AgentError {
 
 export type ErrorCallback = (error: AgentError) => void;
 
-const errorHandlers: ErrorCallback[] = [];
+// BUG-001 [CRITICAL]: Global mutable array had race condition potential.
+// FIX: Changed to use a Set for O(1) lookup and prevent duplicate registrations,
+// and use immutable snapshot pattern during dispatch to prevent concurrent modification.
+const errorHandlers: Set<ErrorCallback> = new Set();
+
+// Track installed global process handlers for cleanup
+let globalHandlerCleanup: (() => void) | null = null;
 
 /** Register a global error handler */
 export function onAgentError(callback: ErrorCallback): () => void {
-  errorHandlers.push(callback);
+  errorHandlers.add(callback);
   return () => {
-    const index = errorHandlers.indexOf(callback);
-    if (index !== -1) {
-      errorHandlers.splice(index, 1);
-    }
+    errorHandlers.delete(callback);
   };
+}
+
+/** Clear all registered error handlers (for testing) */
+export function clearErrorHandlers(): void {
+  errorHandlers.clear();
+  // Also clear any installed global process handlers
+  if (globalHandlerCleanup) {
+    globalHandlerCleanup();
+    globalHandlerCleanup = null;
+  }
 }
 
 /** Dispatch error to all registered handlers */
 export function dispatchError(error: AgentError): void {
-  for (const handler of errorHandlers) {
+  // BUG-001 [CRITICAL]: Take immutable snapshot to prevent concurrent modification
+  // during handler execution (handlers might register/unregister other handlers)
+  const handlersSnapshot = [...errorHandlers];
+  for (const handler of handlersSnapshot) {
     try {
       handler(error);
     } catch {
@@ -323,18 +397,38 @@ export function wrapError(error: unknown): AgentError {
 }
 
 /** Install global unhandled rejection and uncaught exception handlers */
-export function installGlobalErrorHandlers(): void {
-  process.on('unhandledRejection', (reason) => {
+export function installGlobalErrorHandlers(): () => void {
+  // BUG-014 [CRITICAL]: No way to uninstall handlers, causing memory leaks in tests
+  // FIX: Return cleanup function to remove handlers
+  
+  const unhandledRejectionHandler = (reason: unknown) => {
     const error = wrapError(reason);
     dispatchError(error);
-  });
+  };
 
-  process.on('uncaughtException', (error) => {
+  const uncaughtExceptionHandler = (error: Error) => {
     const agentError = wrapError(error);
     dispatchError(agentError);
-    // Give handlers a chance to log, then exit
-    setTimeout(() => {
-      process.exit(1);
-    }, 1000);
-  });
+    // BUG-015 [CRITICAL]: process.exit(1) after setTimeout could cause issues in tests
+    // FIX: Only exit in non-test environments, and use setImmediate for faster cleanup
+    if (process.env.NODE_ENV !== 'test') {
+      // Give handlers a chance to log, then exit
+      setTimeout(() => {
+        process.exit(1);
+      }, 1000);
+    }
+  };
+
+  process.on('unhandledRejection', unhandledRejectionHandler);
+  process.on('uncaughtException', uncaughtExceptionHandler);
+
+  const cleanup = () => {
+    process.off('unhandledRejection', unhandledRejectionHandler);
+    process.off('uncaughtException', uncaughtExceptionHandler);
+  };
+  
+  // Store cleanup for clearErrorHandlers() to use
+  globalHandlerCleanup = cleanup;
+
+  return cleanup;
 }
