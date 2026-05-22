@@ -23,12 +23,14 @@ export class TimeoutTimer {
   private onTimeout: () => void;
   private warningTimerId: ReturnType<typeof setTimeout> | null = null;
   private onWarning?: () => void;
+  private warningPercentage: number;
 
   constructor(timeoutMs: number, onTimeout: () => void, onWarning?: () => void, warningPercentage?: number) {
     this.remaining = timeoutMs;
     this.startTime = Date.now();
     this.onTimeout = onTimeout;
     this.onWarning = onWarning;
+    this.warningPercentage = warningPercentage ?? 80;
 
     this.timerId = setTimeout(() => {
       this.onTimeout();
@@ -62,7 +64,7 @@ export class TimeoutTimer {
 
     // Re-create warning timer if originally configured
     if (this.onWarning) {
-      const warningMs = this.remaining * 0.8; // Use 80% as default warning threshold
+      const warningMs = this.remaining * (this.warningPercentage / 100);
       this.warningTimerId = setTimeout(() => {
         this.onWarning?.();
         this.warningTimerId = null;

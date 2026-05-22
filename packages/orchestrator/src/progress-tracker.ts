@@ -54,7 +54,8 @@ export class ProgressTracker {
 
     // Calculate ETA based on active time only
     const now = Date.now();
-    const activeTime = (this.activeTimeMap.get(taskId) ?? 0) + (now - state.updatedAt.getTime());
+    const elapsed = now - state.updatedAt.getTime();
+    const activeTime = (this.activeTimeMap.get(taskId) ?? 0) + elapsed;
     this.activeTimeMap.set(taskId, activeTime);
     if (state.completedSteps > 0 && activeTime > 0) {
       const avgTimePerStep = activeTime / state.completedSteps;
@@ -90,8 +91,8 @@ export class ProgressTracker {
       });
     }
 
-    // Check completion
-    if (state.completedSteps >= state.totalSteps) {
+    // Check completion (only when totalSteps > 0 to avoid false completion)
+    if (state.totalSteps > 0 && state.completedSteps >= state.totalSteps) {
       state.status = 'completed';
       state.percentage = 100;
       state.eta = 0;

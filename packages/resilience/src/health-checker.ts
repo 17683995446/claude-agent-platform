@@ -76,7 +76,7 @@ export class HealthChecker {
 
     for (const [name, config] of this.checks) {
       checkPromises.push(
-        this.checkComponent(name, config).then(health => {
+        this.checkComponentInternal(name, config).then(health => {
           results[name] = health;
         }),
       );
@@ -96,9 +96,6 @@ export class HealthChecker {
     };
   }
 
-  // NOTE: This is the public overload. It accepts only a name string and looks up
-  // the config internally. The private overload below accepts (name, config) and
-  // is used internally for direct execution with a known config.
   async checkComponent(name: string): Promise<ComponentHealth> {
     const config = this.checks.get(name);
     if (!config) {
@@ -112,7 +109,7 @@ export class HealthChecker {
         consecutiveSuccesses: 0,
       };
     }
-    return this.checkComponent(name, config);
+    return this.checkComponentInternal(name, config);
   }
 
   getComponentHealth(name: string): ComponentHealth {
@@ -150,7 +147,7 @@ export class HealthChecker {
     this.intervals.clear();
   }
 
-  private async checkComponent(name: string, config: HealthCheckConfig): Promise<ComponentHealth> {
+  private async checkComponentInternal(name: string, config: HealthCheckConfig): Promise<ComponentHealth> {
     const health = this.componentHealth.get(name)!;
     const oldLevel = health.level;
 
@@ -207,7 +204,7 @@ export class HealthChecker {
     const id = setInterval(() => {
       const config = this.checks.get(name);
       if (config) {
-        this.checkComponent(name, config).catch(() => {});
+        this.checkComponentInternal(name, config).catch(() => {});
       }
     }, interval);
     this.intervals.set(name, id);

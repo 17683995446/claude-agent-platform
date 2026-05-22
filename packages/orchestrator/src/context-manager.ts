@@ -62,7 +62,7 @@ export class ContextManager {
 
   /** Get available token budget */
   getAvailableTokens(): number {
-    return this.config.maxTokens - this.config.reservedTokens - this.getTotalTokens();
+    return Math.max(0, this.config.maxTokens - this.config.reservedTokens - this.getTotalTokens());
   }
 
   /** Get number of entries */
@@ -91,6 +91,7 @@ export class ContextManager {
     // Post-compression space verification
     if (this.getTotalTokens() + tokenCount > this.config.maxTokens) {
       // Still over budget after compression; skip adding to prevent overflow
+      contextEntry.tokenCount = 0; // Mark as not stored
       return contextEntry;
     }
 

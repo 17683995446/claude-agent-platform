@@ -69,24 +69,9 @@ export class Sandbox {
    * Validate file system access for a given path
    */
   validateFilesystemAccess(path: string): { allowed: boolean; reason?: string } {
-    // Check blacklist first
-    for (const blocked of this.options.filesystemBlacklist) {
-      if (path.startsWith(blocked) || path === blocked) {
-        return { allowed: false, reason: `Path is blacklisted: ${blocked}` };
-      }
-    }
-
-    // If whitelist is set, path must be in it
-    if (this.options.filesystemWhitelist.length > 0) {
-      const allowed = this.options.filesystemWhitelist.some(
-        (allowedPath) => path.startsWith(allowedPath) || path === allowedPath
-      );
-      if (!allowed) {
-        return { allowed: false, reason: 'Path not in filesystem whitelist' };
-      }
-    }
-
-    // Check for path traversal attempts
+    // BUG-003 FIX: Check path traversal BEFORE whitelist/blacklist checks.
+    // Previously, a path like "/tmp/../../etc/passwd" would pass the whitelist
+    // check for "/tmp" before the traversal check caught it.
     // Decode URL-encoded characters first to prevent bypass via %2e%2e%2f etc.
     let decoded = path;
     try {
@@ -97,6 +82,23 @@ export class Sandbox {
     const normalized = decoded.replace(/\\/g, '/').replace(/\/+/g, '/');
     if (normalized.includes('..')) {
       return { allowed: false, reason: 'Path traversal detected' };
+    }
+
+    // Check blacklist
+    for (const blocked of this.options.filesystemBlacklist) {
+      if (normalized.startsWith(blocked) || normalized === blocked) {
+        return { allowed: false, reason: `Path is blacklisted: ${blocked}` };
+      }
+    }
+
+    // If whitelist is set, path must be in it
+    if (this.options.filesystemWhitelist.length > 0) {
+      const allowed = this.options.filesystemWhitelist.some(
+        (allowedPath) => normalized.startsWith(allowedPath) || normalized === allowedPath
+      );
+      if (!allowed) {
+        return { allowed: false, reason: 'Path not in filesystem whitelist' };
+      }
     }
 
     return { allowed: true };
@@ -110,8 +112,12 @@ export class Sandbox {
       return { allowed: false, reason: 'Network access is disabled' };
     }
 
+    // BUG-004 FIX: Normalize host to lowercase for case-insensitive comparison.
+    // Previously, "EVIL.COM" would bypass a deny list containing "evil.com".
+    const normalizedHost = host.toLowerCase();
+
     // Check deny list
-    if (this.options.networkDenyList.includes(host)) {
+    if (this.options.networkDenyList.some((h) => h.toLowerCase() === normalizedHost)) {
       return { allowed: false, reason: `Host is denied: ${host}` };
     }
 
@@ -121,7 +127,7 @@ export class Sandbox {
 
     // If allow list is set, host/port must be in it
     if (this.options.networkAllowList.length > 0) {
-      const hostAllowed = this.options.networkAllowList.includes(host);
+      const hostAllowed = this.options.networkAllowList.some((h) => h.toLowerCase() === normalizedHost);
       if (!hostAllowed) {
         return { allowed: false, reason: `Host not in allow list: ${host}` };
       }

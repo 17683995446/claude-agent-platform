@@ -60,8 +60,14 @@ export class GracefulShutdownManager {
     });
   }
 
+  private shutdownPromise: Promise<void> | null = null;
+
   async shutdown(reason?: string): Promise<void> {
-    if (this.isShuttingDownFlag) return;
+    if (this.isShuttingDownFlag) {
+      // If already shutting down, return the existing promise to ensure
+      // concurrent callers wait for the same shutdown sequence.
+      return this.shutdownPromise!;
+    }
 
     this.isShuttingDownFlag = true;
     this.shutdownReason = reason ?? 'manual';
@@ -69,18 +75,22 @@ export class GracefulShutdownManager {
 
     const phases: ShutdownPhase[] = ['stop_accepting', 'drain_active', 'cleanup', 'exit'];
 
-    for (const phase of phases) {
-      this.currentPhase = phase;
-      const phaseHandlers = this.handlers.filter(h => h.phase === phase);
+    this.shutdownPromise = (async () => {
+      for (const phase of phases) {
+        this.currentPhase = phase;
+        const phaseHandlers = this.handlers.filter(h => h.phase === phase);
 
-      this.emitEvent(phase, this.getStatus());
+        this.emitEvent(phase, this.getStatus());
 
-      const phaseTimeout = this.getPhaseTimeout(phase);
+        const phaseTimeout = this.getPhaseTimeout(phase);
 
-      await this.executeHandlers(phaseHandlers, phaseTimeout);
-    }
+        await this.executeHandlers(phaseHandlers, phaseTimeout);
+      }
 
-    this.currentPhase = null;
+      this.currentPhase = null;
+    })();
+
+    return this.shutdownPromise;
   }
 
   isShuttingDown(): boolean {
@@ -130,6 +140,7 @@ export class GracefulShutdownManager {
       process.off(signal, handler);
     }
     this.signalHandlers.clear();
+    this.shutdownPromise = null;
   }
 
   private setupSignalHandlers(): void {
@@ -154,9 +165,10 @@ export class GracefulShutdownManager {
       case 'stop_accepting':
         return 5000;
       case 'drain_active':
+        // Use the configured drainTimeout for the drain phase
         return this.config.drainTimeout;
       case 'cleanup':
-        return 15000;
+        return this.config.forceShutdownTimeout;
       case 'exit':
         return 5000;
       default:
@@ -169,7 +181,7 @@ export class GracefulShutdownManager {
 
     const timerIds: ReturnType<typeof setTimeout>[] = [];
 
-    const results = await Promise.race([
+    await Promise.race([
       Promise.all(
         handlers.map(async h => {
           try {

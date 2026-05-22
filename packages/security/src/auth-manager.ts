@@ -82,28 +82,81 @@ export class TokenAuthStrategy implements AuthStrategy {
   }
 
   async authenticate(credentials: unknown): Promise<AuthResult> {
+    // BUG-009 FIX: Handle null/undefined credentials gracefully.
+    // Previously, destructuring null/undefined credentials would throw a TypeError.
+    if (!credentials || typeof credentials !== 'object') {
+      return { success: false, error: 'Token is required' };
+    }
     const { token } = credentials as { token: string };
     if (!token) {
       return { success: false, error: 'Token is required' };
     }
 
-    const payload = this.tokens.get(token);
-    if (!payload) {
-      return { success: false, error: 'Invalid token' };
+    // BUG-001 FIX: Verify HMAC signature before looking up the token store
+    // Previously, authenticate() only checked the in-memory store without
+    // verifying the cryptographic signature, allowing forged tokens to pass.
+    if (!token.startsWith('tok_')) {
+      return { success: false, error: 'Invalid token format' };
+    }
+    const tokenBody = token.slice(4); // remove 'tok_' prefix
+    const lastDotIndex = tokenBody.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      return { success: false, error: 'Invalid token format' };
+    }
+    const payloadB64 = tokenBody.slice(0, lastDotIndex);
+    const signature = tokenBody.slice(lastDotIndex + 1);
+    const expectedSignature = createHmac('sha256', this.secretKey)
+      .update(payloadB64)
+      .digest('base64url');
+    // Use timingSafeEqual to prevent timing attacks on signature comparison
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
+      return { success: false, error: 'Invalid token signature' };
     }
 
-    if (payload.expiresAt < Date.now()) {
+    // Decode payload to get expiry info even if not in store
+    let payload: TokenPayload;
+    try {
+      payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+    } catch {
+      return { success: false, error: 'Invalid token payload' };
+    }
+
+    // BUG-002 FIX: If token is not in the store (e.g., after server restart),
+    // still validate based on the signed payload expiry
+    const storedPayload = this.tokens.get(token);
+    if (!storedPayload) {
+      // Token was generated but store was cleared (e.g., server restart).
+      // Validate using the self-contained signed payload.
+      if (payload.expiresAt < Date.now()) {
+        return { success: false, error: 'Token expired' };
+      }
+      if (payload.type !== 'access') {
+        return { success: false, error: 'Invalid token type' };
+      }
+      return {
+        success: true,
+        userId: payload.userId,
+        roles: payload.roles,
+        permissions: payload.permissions,
+        token,
+        expiresAt: payload.expiresAt,
+      };
+    }
+
+    if (storedPayload.expiresAt < Date.now()) {
       this.tokens.delete(token);
       return { success: false, error: 'Token expired' };
     }
 
     return {
       success: true,
-      userId: payload.userId,
-      roles: payload.roles,
-      permissions: payload.permissions,
+      userId: storedPayload.userId,
+      roles: storedPayload.roles,
+      permissions: storedPayload.permissions,
       token,
-      expiresAt: payload.expiresAt,
+      expiresAt: storedPayload.expiresAt,
     };
   }
 

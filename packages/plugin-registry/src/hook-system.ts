@@ -203,8 +203,10 @@ export class HookSystem {
   removeAllHooks(hookName?: string): void {
     if (hookName) {
       this.hooks.delete(hookName);
+      this.hookTypes.delete(hookName);
     } else {
       this.hooks.clear();
+      this.hookTypes.clear();
     }
   }
 }

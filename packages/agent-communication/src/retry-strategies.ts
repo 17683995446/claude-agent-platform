@@ -60,10 +60,14 @@ export class RetryManager {
 
     // Check circuit breaker - always check regardless of strategy
     // COMM-8: Removed `|| true` hack; circuit breaker protects all strategies
+    // BUG-FIX-004 [MEDIUM]: Use per-call threshold and resetTime from options when provided,
+    // falling back to defaults otherwise.
+    const effectiveThreshold = options?.circuitBreakerThreshold ?? this.defaultOptions.circuitBreakerThreshold;
+    const effectiveResetTime = options?.circuitBreakerResetTime ?? this.defaultOptions.circuitBreakerResetTime;
     {
       const circuit = this.getCircuitStateInternal(opts.destination);
       if (circuit.state === 'open') {
-        if (Date.now() - circuit.lastFailureTime > this.defaultOptions.circuitBreakerResetTime) {
+        if (Date.now() - circuit.lastFailureTime > effectiveResetTime) {
           circuit.state = 'half-open';
           circuit.halfOpenProbes = 0;
         } else {
@@ -95,7 +99,7 @@ export class RetryManager {
         return result;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        this.onFailureInternal(opts.destination);
+        this.onFailureInternal(opts.destination, effectiveThreshold);
 
         if (attempt < opts.maxRetries) {
           opts.onRetry?.(attempt + 1, lastError);
@@ -167,12 +171,14 @@ export class RetryManager {
     circuit.successCount++;
   }
 
-  private onFailureInternal(destination: string): void {
+  private onFailureInternal(destination: string, threshold?: number): void {
     const circuit = this.getCircuitStateInternal(destination);
     circuit.failureCount++;
     circuit.lastFailureTime = Date.now();
 
-    if (circuit.failureCount >= this.defaultOptions.circuitBreakerThreshold) {
+    // BUG-FIX-004 [MEDIUM]: Use provided threshold or fall back to default
+    const effectiveThreshold = threshold ?? this.defaultOptions.circuitBreakerThreshold;
+    if (circuit.failureCount >= effectiveThreshold) {
       circuit.state = 'open';
     }
   }

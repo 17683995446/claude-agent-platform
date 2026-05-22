@@ -288,11 +288,25 @@ export class TaskDelegationManager {
   }
 
   reset(): void {
+    // BUG-FIX-003 [CRITICAL]: Resolve all pending task promises before clearing,
+    // preventing callers from hanging forever when reset() is called.
+    for (const [taskId, resolver] of this.taskResolvers.entries()) {
+      const status = this.tasks.get(taskId);
+      resolver({
+        taskId,
+        agentId: status?.assignment?.agentId ?? 'none',
+        success: false,
+        result: null,
+        completedAt: Date.now(),
+        error: 'Task manager reset',
+      });
+    }
     // Clear all pending timers
     for (const timer of this.taskTimers.values()) {
       clearTimeout(timer);
     }
     this.taskTimers.clear();
+    this.taskResolvers.clear();
     this.tasks.clear();
     this.agents.clear();
     this.roundRobinIndex = 0;

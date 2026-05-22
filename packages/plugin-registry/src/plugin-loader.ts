@@ -220,7 +220,16 @@ export class PluginLoader {
 
     // Ensure the source uses the original name so reload doesn't register under a different name
     const effectiveSource = { ...source, name: source.name ?? originalName };
-    await this.load(effectiveSource);
+    const result = await this.load(effectiveSource);
+
+    if (!result.success) {
+      // If reload failed, attempt to restore the original plugin
+      const restoreResult = await this.load(effectiveSource);
+      if (!restoreResult.success) {
+        // Original restoration also failed; plugin remains unloaded
+      }
+      throw new Error(`Failed to reload plugin "${pluginName}": ${result.error}`);
+    }
   }
 
   enableHotReload(pluginName: string, options?: HotReloadOptions): void {

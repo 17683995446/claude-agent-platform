@@ -153,7 +153,7 @@ export class SessionManager {
   /** Pause a session */
   pause(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
-    if (!session || session.status !== 'active') return false;
+    if (!session || (session.status !== 'active' && session.status !== 'completed')) return false;
     session.status = 'paused';
     session.updatedAt = new Date();
     return true;

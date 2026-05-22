@@ -53,6 +53,8 @@ export class ConsensusEngine {
   private defaultTimeout = 30000;
   private proposalTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
+  private proposalResolvers: Map<string, (result: ConsensusResult) => void> = new Map();
+
   setAgentWeight(agentId: string, weight: number): void {
     this.agentWeights.set(agentId, weight);
   }
@@ -66,6 +68,10 @@ export class ConsensusEngine {
   }
 
   delegateVote(fromAgentId: string, toAgentId: string): void {
+    // BUG-FIX-005 [MEDIUM]: Reject self-delegation to prevent semantic confusion
+    if (fromAgentId === toAgentId) {
+      throw new Error('Cannot delegate vote to self');
+    }
     this.voteDelegations.set(fromAgentId, toAgentId);
   }
 
@@ -92,8 +98,12 @@ export class ConsensusEngine {
 
     // Wait for timeout then resolve
     return new Promise<ConsensusResult>((resolve) => {
+      // BUG-FIX-002 [CRITICAL]: Store resolver so reset() can resolve pending proposals
+      // instead of leaving them hanging forever.
+      this.proposalResolvers.set(fullProposal.id, resolve);
       const timer = setTimeout(() => {
         this.proposalTimers.delete(fullProposal.id);
+        this.proposalResolvers.delete(fullProposal.id);
         const currentState = this.proposals.get(fullProposal.id);
         if (!currentState) {
           // Proposal was cleared (reset), resolve with default
@@ -244,10 +254,26 @@ export class ConsensusEngine {
   }
 
   reset(): void {
+    // BUG-FIX-002 [CRITICAL]: Resolve all pending proposal promises before clearing,
+    // preventing callers from hanging forever.
+    for (const [proposalId, resolver] of this.proposalResolvers.entries()) {
+      resolver({
+        proposalId,
+        accepted: false,
+        forVotes: 0,
+        againstVotes: 0,
+        abstainVotes: 0,
+        totalWeight: 0,
+        forWeight: 0,
+        againstWeight: 0,
+        algorithm: this.defaultAlgorithm,
+      });
+    }
     for (const timer of this.proposalTimers.values()) {
       clearTimeout(timer);
     }
     this.proposalTimers.clear();
+    this.proposalResolvers.clear();
     this.proposals.clear();
     this.agentWeights.clear();
     this.voteDelegations.clear();

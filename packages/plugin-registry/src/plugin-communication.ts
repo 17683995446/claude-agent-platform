@@ -141,6 +141,7 @@ export class PluginCommunicationBus {
     for (const [pluginName, pluginHandlers] of this.handlers) {
       if (pluginName === from) continue;
       if (this.blockedPlugins.has(pluginName)) continue;
+      if (delivered >= this.limits.maxBroadcastRecipients) break;
 
       if (!this.checkFilters(from, pluginName, enrichedMessage)) continue;
 
@@ -173,6 +174,42 @@ export class PluginCommunicationBus {
       throw new Error(`Request blocked by message filter`);
     }
 
+    const targetHandlers = this.handlers.get(to);
+    if (!targetHandlers || targetHandlers.length === 0) {
+      throw new Error(`No handlers registered for plugin "${to}"`);
+    }
+
+    this.addToMessageLog({ from, to, message: enrichedMessage, timestamp: Date.now() });
+
+    // Try to get a response from handlers first.
+    // If a handler returns a non-undefined non-Promise value, use it directly.
+    // If a handler returns a Promise, race it against the timeout.
+    // If all handlers return undefined, fall through to reply()-based pattern.
+    for (const handler of targetHandlers) {
+      try {
+        const result = handler(enrichedMessage, from);
+        if (result !== undefined) {
+          if (result instanceof Promise) {
+            // Race the async handler result against a timeout
+            return new Promise<T>((resolve, reject) => {
+              const timer = setTimeout(() => {
+                reject(new Error(`Request to "${to}" timed out after ${timeoutMs}ms`));
+              }, timeoutMs);
+              (result as Promise<T>).then(
+                value => { clearTimeout(timer); resolve(value); },
+                err => { clearTimeout(timer); reject(err); },
+              );
+            });
+          }
+          return result as T;
+        }
+        // Handler returned undefined - continue to next handler
+      } catch (err) {
+        // Handler threw - continue to next handler
+      }
+    }
+
+    // No handler returned a value; use reply-based pattern
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(requestId);
@@ -180,43 +217,6 @@ export class PluginCommunicationBus {
       }, timeoutMs);
 
       this.pendingRequests.set(requestId, { resolve, reject, timeout: timer });
-
-      const targetHandlers = this.handlers.get(to);
-      if (!targetHandlers || targetHandlers.length === 0) {
-        clearTimeout(timer);
-        this.pendingRequests.delete(requestId);
-        reject(new Error(`No handlers registered for plugin "${to}"`));
-        return;
-      }
-
-      this.addToMessageLog({ from, to, message: enrichedMessage, timestamp: Date.now() });
-
-      for (const handler of targetHandlers) {
-        try {
-          const result = handler(enrichedMessage, from);
-          if (result instanceof Promise) {
-            result.then(value => {
-              clearTimeout(timer);
-              this.pendingRequests.delete(requestId);
-              resolve(value as T);
-            }).catch(err => {
-              clearTimeout(timer);
-              this.pendingRequests.delete(requestId);
-              reject(err);
-            });
-          } else {
-            clearTimeout(timer);
-            this.pendingRequests.delete(requestId);
-            resolve(result as T);
-          }
-          break; // Only use first handler
-        } catch (err) {
-          clearTimeout(timer);
-          this.pendingRequests.delete(requestId);
-          reject(err);
-          break;
-        }
-      }
     });
   }
 
@@ -230,7 +230,8 @@ export class PluginCommunicationBus {
   }
 
   getMessageLog(limit?: number): Array<{ from: string; to: string; message: PluginMessage; timestamp: number }> {
-    if (limit) {
+    if (limit != null && limit >= 0) {
+      if (limit === 0) return [];
       return this.messageLog.slice(-limit);
     }
     return [...this.messageLog];

@@ -99,8 +99,11 @@ export class FileSecretProvider implements SecretProvider {
       decrypted += decipher.final('utf-8');
       return decrypted;
     } catch {
-      // If decryption fails, return original (for backward compatibility with old format)
-      return encrypted;
+      // BUG-005 FIX: Throw on decryption failure instead of returning ciphertext.
+      // Previously, when decryption failed (wrong key, corrupted data), the raw
+      // encrypted string was returned to the caller, potentially leaking encrypted
+      // data that could be used for cryptographic analysis.
+      throw new Error('Decryption failed: invalid ciphertext or wrong encryption key');
     }
   }
 

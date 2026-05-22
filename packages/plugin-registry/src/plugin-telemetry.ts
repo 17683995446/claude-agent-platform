@@ -173,9 +173,9 @@ export class PluginTelemetry {
     for (let i = 0; i < durations.length; i++) {
       if (durations[i] > maxTime) maxTime = durations[i];
     }
-    let minTime = 0;
+    let minTime = total > 0 ? durations[0] : 0;
     for (let i = 0; i < durations.length; i++) {
-      if (i === 0 || durations[i] < minTime) minTime = durations[i];
+      if (durations[i] < minTime) minTime = durations[i];
     }
     const errorRate = total > 0 ? failed / total : 0;
     const lastExec = total > 0 ? records[records.length - 1].timestamp : 0;

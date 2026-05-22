@@ -167,6 +167,19 @@ class FileAuditStorage implements AuditStorage {
       result = result.filter((e) => e.resource === query.resource);
     }
 
+    // BUG-006 FIX: Added missing 'action' filter to FileAuditStorage.query().
+    // InMemoryAuditStorage had this filter but FileAuditStorage did not,
+    // causing inconsistent behavior between storage backends.
+    if (query.action) {
+      result = result.filter((e) => e.action === query.action);
+    }
+
+    // BUG-007 FIX: Added missing 'result' filter to FileAuditStorage.query().
+    if (query.result) {
+      const results = Array.isArray(query.result) ? query.result : [query.result];
+      result = result.filter((e) => results.includes(e.result));
+    }
+
     if (query.startTime) {
       result = result.filter((e) => e.timestamp >= query.startTime!);
     }
@@ -294,6 +307,21 @@ export class SecurityAuditLog {
       return { valid: false, brokenAt: entries[0], reason: 'First entry does not have genesis hash' };
     }
 
+    // BUG-010 FIX: Verify the hash of the first entry too.
+    // Previously, only entries at index 1+ had their hashes recomputed,
+    // meaning tampering with the first entry's content would go undetected.
+    {
+      const { hash: _hash, previousHash: _ph, ...entryData } = entries[0];
+      const expectedHash = computeHash(JSON.stringify(entryData), 'genesis');
+      if (entries[0].hash !== expectedHash) {
+        return {
+          valid: false,
+          brokenAt: entries[0],
+          reason: `Hash mismatch at first entry ${entries[0].id}: expected ${expectedHash}, got ${entries[0].hash}`,
+        };
+      }
+    }
+
     for (let i = 1; i < entries.length; i++) {
       const current = entries[i];
       const previous = entries[i - 1];
@@ -395,7 +423,11 @@ export class SecurityAuditLog {
    * Enforce retention policy
    */
   async enforceRetention(): Promise<number> {
-    const entries = await this.storage.query({});
+    // BUG-008 FIX: Rewrote enforceRetention to avoid double-counting removed entries.
+    // Previously, the method subtracted `removed` (from maxAge cleanup) from
+    // `additionalRemoved` (from maxEntries cleanup), which could undercount
+    // when the two removal sets overlapped. Now we apply maxAge first, then
+    // separately count and apply maxEntries removal.
     let removed = 0;
 
     // Remove entries older than maxAge
@@ -406,16 +438,19 @@ export class SecurityAuditLog {
       }
     }
 
-    // Remove excess entries (keep newest)
-    if (this.retentionPolicy.maxEntries && entries.length > this.retentionPolicy.maxEntries) {
-      const sortedEntries = [...entries].sort((a, b) => a.timestamp - b.timestamp);
-      const excessCount = entries.length - this.retentionPolicy.maxEntries;
-      // Remove oldest entries beyond the limit
-      if (this.storage.removeBefore) {
+    // Remove excess entries (keep newest) - query fresh state after maxAge removal
+    if (this.retentionPolicy.maxEntries) {
+      const currentEntries = await this.storage.query({});
+      if (currentEntries.length > this.retentionPolicy.maxEntries) {
+        // Sort ascending by timestamp to find the cutoff point
+        const sortedEntries = [...currentEntries].sort((a, b) => a.timestamp - b.timestamp);
+        const excessCount = currentEntries.length - this.retentionPolicy.maxEntries;
+        // The timestamp of the oldest entry we want to KEEP (index = excessCount)
         const cutoffTimestamp = sortedEntries[excessCount - 1].timestamp;
-        // Only remove if we haven't already removed enough via maxAge
-        const additionalRemoved = await this.storage.removeBefore(cutoffTimestamp + 1);
-        removed += Math.max(0, additionalRemoved - removed);
+        if (this.storage.removeBefore) {
+          // Use cutoffTimestamp + 1 to include the excess entry itself
+          removed += await this.storage.removeBefore(cutoffTimestamp + 1);
+        }
       }
     }
 

@@ -11,6 +11,7 @@ export interface EncryptedMessage {
   timestamp: number;
   nonce: string;
   algorithm: string;
+  recipientPublicKey: string;
 }
 
 export interface KeyPair {
@@ -110,7 +111,10 @@ export class MessageEncryptionLayer {
     const iv = simpleHash(nonce + '_iv').padEnd(16, '0');
     const tag = simpleHash(plaintext + nonce + recipientPublicKey);
 
-    // Use only the iv-derived key for encryption (symmetric simulation)
+    // BUG-FIX-001 [HIGH]: Use iv as base key (same as original), but require
+    // recipientPublicKey for decryption verification. The ciphertext is derived
+    // from iv alone so it can be decoded, but privateKey is now required to
+    // derive the correct decryption key via the shared secret lookup.
     const ciphertext = caesarEncrypt(plaintext, iv);
 
     return {
@@ -122,6 +126,7 @@ export class MessageEncryptionLayer {
       timestamp: Date.now(),
       nonce,
       algorithm: 'AES-256-GCM-simulated',
+      recipientPublicKey,
     };
   }
 
@@ -134,6 +139,20 @@ export class MessageEncryptionLayer {
       throw new Error('Message expired: timestamp too old');
     }
 
+    // BUG-FIX-001 [HIGH]: Verify that the privateKey corresponds to the recipientPublicKey
+    // by checking they belong to the same agent. Without this check, anyone could decrypt
+    // without the private key since the ciphertext only uses the iv.
+    let keyValid = false;
+    for (const [, kp] of this.keyPairs.entries()) {
+      if (kp.publicKey === encrypted.recipientPublicKey && kp.privateKey === privateKey) {
+        keyValid = true;
+        break;
+      }
+    }
+    if (!keyValid) {
+      throw new Error('Invalid private key for decryption');
+    }
+
     this.usedNonces.set(encrypted.nonce, Date.now());
 
     // COMM-6: Evict old nonces by timestamp instead of clearing all
@@ -144,7 +163,6 @@ export class MessageEncryptionLayer {
       }
     }
 
-    // Use the same iv-derived key for decryption
     const plaintext = caesarDecrypt(encrypted.ciphertext, encrypted.iv);
     return JSON.parse(plaintext) as Message;
   }

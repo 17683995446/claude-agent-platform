@@ -77,10 +77,11 @@ export class FeedbackLoop {
       lastResult.userFeedback = feedback;
 
       // Learn from user feedback
-      if (feedback.includes('好') || feedback.includes('good') || feedback.includes('ok')) {
-        this.userPreferences.set(taskId, (this.userPreferences.get(taskId) ?? 0) + 1);
-      } else if (feedback.includes('差') || feedback.includes('bad') || feedback.includes('不好')) {
+      // BUG-011 FIX: Check negative keywords first to avoid '不好' matching '好'
+      if (feedback.includes('差') || feedback.includes('bad') || feedback.includes('不好')) {
         this.userPreferences.set(taskId, (this.userPreferences.get(taskId) ?? 0) - 1);
+      } else if (feedback.includes('好') || feedback.includes('good') || feedback.includes('ok')) {
+        this.userPreferences.set(taskId, (this.userPreferences.get(taskId) ?? 0) + 1);
       }
     }
   }
@@ -106,17 +107,19 @@ export class FeedbackLoop {
 
   /** Calculate retry delay with exponential backoff */
   private calculateRetryDelay(retryCount: number): number {
-    const delay = Math.min(
+    let delay = Math.min(
       this.retryConfig.baseDelay * Math.pow(this.retryConfig.backoffMultiplier, retryCount),
       this.retryConfig.maxDelay,
     );
 
     if (this.retryConfig.jitter) {
       const jitter = delay * 0.2 * (Math.random() - 0.5);
-      return Math.floor(delay + jitter);
+      delay = delay + jitter;
     }
 
-    return delay;
+    // BUG-010 FIX: Cap at maxDelay after jitter to prevent exceeding the limit
+    delay = Math.min(delay, this.retryConfig.maxDelay);
+    return Math.max(0, Math.floor(delay));
   }
 
   /** Get feedback history for a task */

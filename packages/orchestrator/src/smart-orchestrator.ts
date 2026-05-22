@@ -180,10 +180,15 @@ export class SmartOrchestrator {
 
           const allSuccess = results.every((r) => r.success);
           if (!allSuccess) {
+            phase.status = 'failed';
+            phase.completedAt = new Date();
+            this.onPhaseComplete?.(phase);
             this.logger.warn('Some parallel tasks failed', {
               failed: results.filter((r) => !r.success).map((r) => r.taskId),
             });
             await this.considerReorder(results);
+            this.state = 'failed';
+            return;
           }
         } else {
           let phaseFailed = false;

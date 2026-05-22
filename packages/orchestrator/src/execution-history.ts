@@ -113,7 +113,10 @@ export class ExecutionHistory {
       results = results.filter((r) => r.startTime >= filters.startDate!);
     }
     if (filters.endDate) {
-      results = results.filter((r) => r.startTime <= filters.endDate!);
+      results = results.filter((r) => {
+        const endTime = r.endTime ?? r.startTime;
+        return endTime <= filters.endDate!;
+      });
     }
     if (filters.limit) {
       results.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());

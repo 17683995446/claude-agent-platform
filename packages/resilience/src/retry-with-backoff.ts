@@ -104,6 +104,7 @@ export class RetryWithBackoff {
       case 'exponential_with_jitter':
         delay = base * Math.pow(2, attempt - 1);
         delay = delay * (1 + (Math.random() * 2 - 1) * this.config.jitterFactor!);
+        delay = Math.max(0, delay);
         break;
       case 'custom':
         delay = this.config.customDelayFn ? this.config.customDelayFn(attempt) : base;

@@ -107,6 +107,17 @@ export class CircuitBreaker {
     };
   }
 
+  getMetricsSnapshot(): CircuitBreakerMetrics {
+    // Unlike getMetrics(), this returns the accumulated durations without
+    // adding the current in-progress duration, making it idempotent.
+    return {
+      failureCount: this.failureCount,
+      successCount: this.successCount,
+      lastFailureTime: this.lastFailureTime,
+      stateDurations: { ...this.stateDurations },
+    };
+  }
+
   on(event: keyof CircuitBreakerEvents, callback: EventCallback): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());

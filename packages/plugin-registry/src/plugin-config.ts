@@ -158,7 +158,7 @@ export class PluginConfigManager {
       // Deep validation for array items
       if (propDef.type === 'array' && propDef.items && Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
-          const itemType = typeof value[i];
+          const itemType = Array.isArray(value[i]) ? 'array' : typeof value[i];
           if (itemType !== propDef.items) {
             errors.push(`Array "${key}" item at index ${i} expected type "${propDef.items}" but got "${itemType}"`);
           }
@@ -230,6 +230,18 @@ export class PluginConfigManager {
   }
 
   resetPluginConfig(pluginName: string): void {
+    const oldConfig = this.pluginConfigs.get(pluginName);
+    if (oldConfig) {
+      for (const key of Object.keys(oldConfig)) {
+        for (const listener of this.changeListeners) {
+          try {
+            listener(pluginName, key, oldConfig[key], undefined);
+          } catch {
+            // Ignore listener errors
+          }
+        }
+      }
+    }
     this.pluginConfigs.delete(pluginName);
   }
 

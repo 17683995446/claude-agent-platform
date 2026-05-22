@@ -298,7 +298,7 @@ export class NLTaskParser {
     const trimmed = input.trim();
     if (!trimmed) {
       return {
-        raw: input,
+        raw: '',
         intent: 'unknown',
         confidence: 0,
         entities: [],

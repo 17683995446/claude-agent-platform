@@ -602,7 +602,7 @@ function findCriticalPath(nodes: SubTask[], edges: TaskEdge[]): string[] {
 
     for (const edge of edges) {
       if (edge.from === current) {
-        const newDist = (dist.get(current) ?? 0) + (nodeMap.get(edge.to)?.estimatedDuration ?? 0);
+        const newDist = (dist.get(current) ?? 0) + currentNode.estimatedDuration;
         if (newDist > (dist.get(edge.to) ?? 0)) {
           dist.set(edge.to, newDist);
           prev.set(edge.to, current);

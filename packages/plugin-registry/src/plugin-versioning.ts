@@ -177,6 +177,11 @@ export class PluginVersionManager {
     const fromVer = this.parseVersion(from);
     const toVer = this.parseVersion(to);
 
+    // Cannot generate path between prerelease versions
+    if (fromVer.prerelease || toVer.prerelease) {
+      return [from, to];
+    }
+
     if (this.eq(fromVer, toVer)) return [from];
 
     const isDowngrade = this.gt(fromVer, toVer);
