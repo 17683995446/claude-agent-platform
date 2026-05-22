@@ -71,8 +71,17 @@ export class RoutingSystem {
     const query: Record<string, string> = {};
     if (queryPart) {
       for (const pair of queryPart.split('&')) {
-        const [key, value] = pair.split('=');
-        query[decodeURIComponent(key)] = decodeURIComponent(value ?? '');
+        if (!pair) continue;
+        const eqIndex = pair.indexOf('=');
+        if (eqIndex === -1) {
+          query[decodeURIComponent(pair)] = '';
+        } else {
+          const key = pair.slice(0, eqIndex);
+          const value = pair.slice(eqIndex + 1);
+          if (key) {
+            query[decodeURIComponent(key)] = decodeURIComponent(value);
+          }
+        }
       }
     }
 

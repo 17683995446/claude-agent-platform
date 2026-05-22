@@ -34,6 +34,7 @@ export class DocumentStore {
 
     for (const doc of this.documents.values()) {
       if (!doc.embedding) continue;
+      if (query.length !== doc.embedding.length) continue;
       const score = cosineSimilarity(query, doc.embedding);
       results.push({
         id: doc.id,

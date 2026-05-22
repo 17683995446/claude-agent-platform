@@ -89,10 +89,11 @@ export class DeploymentManager {
         record.phase = 'deployed';
       } else if (config.strategy === 'canary') {
         const canaryPercent = config.canaryPercent ?? 10;
-        if (canaryPercent > 50) {
+        if (canaryPercent >= 100) {
           record.phase = 'deployed';
         } else {
-          record.phase = 'deployed';
+          // Canary deployment stays in deploying phase until full rollout
+          record.phase = 'deploying';
         }
       } else {
         record.phase = 'deployed';

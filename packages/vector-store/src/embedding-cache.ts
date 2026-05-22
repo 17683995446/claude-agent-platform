@@ -36,7 +36,7 @@ export class EmbeddingCache {
     this.cache.delete(key);
     this.cache.set(key, entry);
     this.hits++;
-    return entry.value;
+    return entry.value.slice();
   }
 
   set(key: string, value: number[]): void {
@@ -52,7 +52,7 @@ export class EmbeddingCache {
       }
     }
     this.cache.set(key, {
-      value,
+      value: value.slice(),
       expiresAt: Date.now() + this.ttlMs,
     });
   }

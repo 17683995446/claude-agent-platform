@@ -86,13 +86,21 @@ export class AppMiddlewarePipeline {
       } catch (error) {
         context.error = error as Error;
 
-        // Find error handler
+        // Find error handler that is NOT the middleware that just failed
         const errorHandler = applicableMiddlewares.find(
-          (m) => m.type === 'error-handler' && (!m.condition || m.condition(context)),
+          (m) => m.type === 'error-handler' && m.name !== middleware.name && (!m.condition || m.condition(context)),
         );
 
         if (errorHandler) {
-          return await errorHandler.execute(context, next);
+          try {
+            return await errorHandler.execute(context, next);
+          } catch {
+            return {
+              status: 500,
+              headers: {},
+              error: error as Error,
+            };
+          }
         }
 
         return {

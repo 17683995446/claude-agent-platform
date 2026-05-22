@@ -106,8 +106,16 @@ export class ConfigHotSwap {
     const rejected: string[] = [];
     const previousConfig: Partial<RuntimeConfig> = {};
 
-    for (const [key, value] of Object.entries(changes)) {
+    // Determine which keys have errors by checking validation errors against each key
+    const errorKeys = new Set<string>();
+    for (const [key] of Object.entries(changes)) {
       if (validation.errors.some(e => e.includes(key))) {
+        errorKeys.add(key);
+      }
+    }
+
+    for (const [key, value] of Object.entries(changes)) {
+      if (errorKeys.has(key)) {
         rejected.push(key);
         continue;
       }
@@ -235,5 +243,7 @@ export class ConfigHotSwap {
   reset(): void {
     this.config = { ...DEFAULT_CONFIG };
     this.changeHistory = [];
+    this.validators = [];
+    this.subscriberId = 0;
   }
 }

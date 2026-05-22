@@ -175,9 +175,9 @@ export class AppTelemetrySystem {
         max: sorted[sorted.length - 1]!,
         avg: values.reduce((a, b) => a + b, 0) / values.length,
         quantiles: {
-          '0.5': sorted[Math.floor(sorted.length * 0.5)] ?? 0,
-          '0.9': sorted[Math.floor(sorted.length * 0.9)] ?? 0,
-          '0.99': sorted[Math.floor(sorted.length * 0.99)] ?? 0,
+          '0.5': sorted[Math.floor((sorted.length - 1) * 0.5)] ?? 0,
+          '0.9': sorted[Math.floor((sorted.length - 1) * 0.9)] ?? 0,
+          '0.99': sorted[Math.floor((sorted.length - 1) * 0.99)] ?? 0,
         },
       };
     }

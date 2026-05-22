@@ -165,18 +165,17 @@ export class AppEventSystem {
     }
 
     // Remove all listeners for a domain
+    const keysToDelete: string[] = [];
     for (const [key, subs] of this.domainSubscriptions) {
       if (key.startsWith(`${domain}:`)) {
         for (const sub of subs) {
           this.subscriptions.delete(sub.id);
         }
+        keysToDelete.push(key);
       }
     }
-    // Clean up domain subscriptions
-    for (const [key] of this.domainSubscriptions) {
-      if (key.startsWith(`${domain}:`)) {
-        this.domainSubscriptions.delete(key);
-      }
+    for (const key of keysToDelete) {
+      this.domainSubscriptions.delete(key);
     }
   }
 

@@ -42,10 +42,22 @@ export class HNSWIndex {
       throw new Error(`Expected dimension ${this.dimension}, got ${vector.length}`);
     }
     if (this.nodes.has(id)) {
-      // Update existing node
-      const node = this.nodes.get(id)!;
-      node.vector = vector.slice();
-      return;
+      // Update existing node: remove old connections and re-insert
+      const oldNode = this.nodes.get(id)!;
+      // Remove from all neighbors' connection lists
+      for (let l = 0; l <= oldNode.maxLevel; l++) {
+        const neighbors = oldNode.neighbors.get(l);
+        if (neighbors) {
+          for (const neighborId of neighbors) {
+            const neighborNode = this.nodes.get(neighborId);
+            if (neighborNode && neighborNode.neighbors.has(l)) {
+              neighborNode.neighbors.get(l)!.delete(id);
+            }
+          }
+        }
+      }
+      this.nodes.delete(id);
+      // Fall through to re-insert as new node below
     }
 
     const nodeLevel = this.randomLevel();
@@ -109,6 +121,9 @@ export class HNSWIndex {
   search(query: number[], topK: number): Array<{ id: string; score: number }> {
     if (!this.entryPoint || this.nodes.size === 0) return [];
     if (topK <= 0) return [];
+    if (query.length !== this.dimension) {
+      throw new Error(`Query dimension ${query.length} does not match index dimension ${this.dimension}`);
+    }
 
     let currentId = this.entryPoint!;
 

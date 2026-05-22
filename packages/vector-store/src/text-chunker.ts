@@ -55,7 +55,13 @@ export class TextChunker {
     if (text.length === 0) return [];
 
     // Split by sentence boundaries
-    const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
+    let sentences = text.match(/[^.!?]+[.!?]+/g);
+    if (!sentences || sentences.length === 0) {
+      // No sentence-ending punctuation found; treat entire text as one sentence
+      sentences = [text];
+    }
+    // Trim whitespace from each sentence
+    sentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
     if (sentences.length === 0) return [];
 
     const chunks: string[] = [];

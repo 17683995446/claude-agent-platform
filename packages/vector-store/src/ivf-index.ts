@@ -51,9 +51,20 @@ export class IVFIndex {
     if (vector.length !== this.dimension) {
       throw new Error(`Expected dimension ${this.dimension}, got ${vector.length}`);
     }
+    const isNew = !this.allVectors.has(id);
     this.allVectors.set(id, vector.slice());
 
     if (this.built && this.centroids.length > 0) {
+      if (!isNew) {
+        // Remove old entry from clusters before re-adding
+        for (const vectors of this.clusters.values()) {
+          const idx = vectors.findIndex(v => v.id === id);
+          if (idx !== -1) {
+            vectors.splice(idx, 1);
+            break;
+          }
+        }
+      }
       const clusterIdx = this.findNearestCluster(vector);
       const cluster = this.clusters.get(clusterIdx) ?? [];
       cluster.push({ id, vector: vector.slice() });
@@ -64,6 +75,9 @@ export class IVFIndex {
   search(query: number[], topK: number): Array<{ id: string; score: number }> {
     if (!this.built || this.centroids.length === 0) return [];
     if (topK <= 0) return [];
+    if (query.length !== this.dimension) {
+      throw new Error(`Query dimension ${query.length} does not match index dimension ${this.dimension}`);
+    }
 
     // Find nearest clusters
     const clusterDistances = this.centroids.map((centroid, idx) => ({

@@ -44,8 +44,9 @@ export class HybridSearch {
     const results: Array<{ id: string; content: string; score: number; vectorScore: number; keywordScore: number }> = [];
 
     for (const doc of this.documents.values()) {
+      if (queryVector.length !== doc.vector.length) continue;
       const vectorScore = cosineSimilarity(queryVector, doc.vector);
-      const keywordScore = this.tfidfScore(queryTerms, doc.content, queryText);
+      const keywordScore = this.tfidfScore(queryTerms, doc.content);
       const score = this.alpha * vectorScore + (1 - this.alpha) * keywordScore;
       results.push({
         id: doc.id,
@@ -78,9 +79,8 @@ export class HybridSearch {
     return text.toLowerCase().split(/\s+/).filter(t => t.length > 0);
   }
 
-  private tfidfScore(queryTerms: string[], document: string, queryText: string): number {
+  private tfidfScore(queryTerms: string[], document: string): number {
     const docTerms = this.tokenize(document);
-    const queryToks = this.tokenize(queryText);
     const allDocs = Array.from(this.documents.values()).map(d => this.tokenize(d.content));
 
     let score = 0;

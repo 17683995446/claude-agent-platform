@@ -144,8 +144,10 @@ export function setupMockTimer(): MockTimer {
     setTime(time: number) {
       mockTimer.currentTime = time;
     },
+    // BUG-005 [MEDIUM] reset() was calling Date.now() which at this point is the
+    // mocked version. Should use the saved realDateNow to get the actual current time.
     reset() {
-      mockTimer.currentTime = Date.now();
+      mockTimer.currentTime = realDateNow();
     },
     restore() {
       Date.now = realDateNow;

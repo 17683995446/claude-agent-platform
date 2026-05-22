@@ -152,6 +152,7 @@ export class RuntimeDashboard {
   }
 
   getRecentEvents(limit: number): RuntimeEvent[] {
+    if (limit <= 0) return [];
     return this.events.slice(-limit);
   }
 

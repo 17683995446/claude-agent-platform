@@ -241,6 +241,7 @@ export class OpsCommandRegistry {
 
   getHistory(limit?: number): CommandHistoryEntry[] {
     if (limit !== undefined) {
+      if (limit <= 0) return [];
       return this.history.slice(-limit);
     }
     return [...this.history];

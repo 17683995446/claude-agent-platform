@@ -96,9 +96,15 @@ export interface CRDTOperation {
 
 export function generateCRDTOperations(count: number = 5, type?: string): CRDTOperation[] {
   const opTypes: Array<'insert' | 'delete' | 'update'> = ['insert', 'delete', 'update'];
+  // BUG-007 [MEDIUM] The type parameter was cast without validation. An invalid type
+  // string (e.g. empty string or 'invalid') would be used as-is, producing invalid
+  // CRDTOperation objects. Now we validate against the union type.
+  const validType = type && opTypes.includes(type as CRDTOperation['type'])
+    ? (type as CRDTOperation['type'])
+    : undefined;
   return Array.from({ length: count }, (_, i) => ({
     id: `op-${i}`,
-    type: (type as CRDTOperation['type']) ?? opTypes[i % opTypes.length]!,
+    type: validType ?? opTypes[i % opTypes.length]!,
     key: `key-${i}`,
     value: `value-${i}`,
     timestamp: Date.now() + i,

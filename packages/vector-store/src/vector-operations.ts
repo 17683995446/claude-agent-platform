@@ -87,6 +87,11 @@ export function scale(vector: number[], scalar: number): number[] {
 export function mean(vectors: number[][]): number[] {
   if (vectors.length === 0) return [];
   const dim = vectors[0]!.length;
+  for (let i = 1; i < vectors.length; i++) {
+    if (vectors[i]!.length !== dim) {
+      throw new Error(`All vectors must have the same dimension: expected ${dim}, got ${vectors[i]!.length}`);
+    }
+  }
   const result = new Array(dim).fill(0);
   for (const vec of vectors) {
     for (let i = 0; i < dim; i++) {

@@ -172,6 +172,7 @@ export class RemoteControlServer {
 
   getAuditLog(limit?: number): AuditLogEntry[] {
     if (limit !== undefined) {
+      if (limit <= 0) return [];
       return this.auditLog.slice(-limit);
     }
     return [...this.auditLog];

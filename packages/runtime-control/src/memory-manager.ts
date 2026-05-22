@@ -115,13 +115,15 @@ export class MemoryManager {
   forceGC(): GCSuccess {
     const before = this.getUsage();
     // Trigger GC if available
+    let gcTriggered = false;
     if (typeof (globalThis as any).gc === 'function') {
       (globalThis as any).gc();
+      gcTriggered = true;
     }
     const after = this.getUsage();
 
     return {
-      triggered: true,
+      triggered: gcTriggered,
       freedBefore: before.heapUsed,
       freedAfter: after.heapUsed,
       freedAmount: Math.max(0, before.heapUsed - after.heapUsed),

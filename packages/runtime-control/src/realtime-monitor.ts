@@ -60,7 +60,7 @@ export class RealtimeMonitor {
     }
   }
 
-  private collect(): void {
+  collect(): void {
     if (this.collectCallback) {
       const values = this.collectCallback();
       for (const [name, value] of values) {
@@ -103,6 +103,7 @@ export class RealtimeMonitor {
     const hist = this.history.get(name);
     if (!hist) return [];
     if (points !== undefined) {
+      if (points <= 0) return [];
       return hist.slice(-points);
     }
     return [...hist];

@@ -58,18 +58,18 @@ export class PluginHost {
   private serviceRegistry: Map<string, unknown> = new Map();
   private eventHandlers: Map<string, Array<(data: unknown) => void>> = new Map();
 
-  loadPlugin(pluginDefinition: PluginDefinition): Promise<LoadedPlugin> {
+  async loadPlugin(pluginDefinition: PluginDefinition): Promise<LoadedPlugin> {
     const name = pluginDefinition.name;
 
     if (this.plugins.has(name)) {
-      return Promise.reject(new Error(`Plugin "${name}" is already loaded`));
+      throw new Error(`Plugin "${name}" is already loaded`);
     }
 
     // Check dependencies
     const deps = pluginDefinition.dependencies ?? [];
     for (const dep of deps) {
       if (!this.plugins.has(dep)) {
-        return Promise.reject(new Error(`Plugin "${name}" requires "${dep}" which is not loaded`));
+        throw new Error(`Plugin "${name}" requires "${dep}" which is not loaded`);
       }
     }
 
@@ -96,14 +96,13 @@ export class PluginHost {
 
     // Init the plugin
     if (pluginDefinition.init) {
-      return pluginDefinition.init(api).then(() => {
-        loadedPlugin.active = true;
-        return loadedPlugin;
-      });
+      await pluginDefinition.init(api);
+      loadedPlugin.active = true;
+      return loadedPlugin;
     }
 
     loadedPlugin.active = true;
-    return Promise.resolve(loadedPlugin);
+    return loadedPlugin;
   }
 
   async unloadPlugin(pluginName: string): Promise<void> {

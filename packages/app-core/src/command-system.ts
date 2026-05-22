@@ -191,6 +191,7 @@ export class CommandSystem {
     const args: Record<string, string> = {};
     const options: Record<string, string | boolean> = {};
     let argIndex = 0;
+    let prevToken: string | undefined;
 
     for (const token of tokens) {
       if (token.startsWith('--')) {
@@ -202,6 +203,7 @@ export class CommandSystem {
           options[optDef.name] = true;
         }
         // Value will be next token for non-boolean options
+        prevToken = token;
       } else if (token.startsWith('-')) {
         const shortName = token.slice(1);
         const optDef = command.options.find((o) => o.shortName === shortName);
@@ -210,14 +212,15 @@ export class CommandSystem {
             options[optDef.name] = true;
           }
         }
+        prevToken = token;
       } else {
         // Check if previous token was an option expecting a value
-        const prevToken = tokens[tokens.indexOf(token) - 1];
         if (prevToken?.startsWith('--')) {
           const optName = prevToken.slice(2);
           const optDef = command.options.find((o) => o.name === optName || o.shortName === optName);
           if (optDef && optDef.type !== 'boolean') {
             options[optDef.name] = token;
+            prevToken = token;
             continue;
           }
         }
@@ -226,6 +229,7 @@ export class CommandSystem {
           const optDef = command.options.find((o) => o.shortName === shortName);
           if (optDef && optDef.type !== 'boolean') {
             options[optDef.name] = token;
+            prevToken = token;
             continue;
           }
         }
@@ -235,6 +239,7 @@ export class CommandSystem {
           args[command.arguments[argIndex]!.name] = token;
           argIndex++;
         }
+        prevToken = token;
       }
     }
 

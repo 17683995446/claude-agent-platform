@@ -53,13 +53,18 @@ export class AppConfigManager {
   }
 
   set(path: string, value: unknown): void {
-    // Set in the topmost layer
+    // Set in the topmost layer (highest priority)
     if (this.layers.length === 0) {
       this.addLayer('runtime', 100, {});
     }
+    // If the topmost layer is 'defaults', create a runtime layer instead
     const topLayer = this.layers[this.layers.length - 1]!;
+    if (topLayer.name === 'defaults') {
+      this.addLayer('runtime', 100, {});
+    }
+    const targetLayer = this.layers[this.layers.length - 1]!;
     const oldValue = this.getNestedValue(path);
-    this.setNestedValue(topLayer.data, path, value);
+    this.setNestedValue(targetLayer.data, path, value);
     this.notifyWatchers(path, value, oldValue);
   }
 

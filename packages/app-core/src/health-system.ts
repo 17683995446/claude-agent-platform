@@ -160,6 +160,10 @@ export class AppHealthSystem {
     return this.checks.size;
   }
 
+  clearHistory(): void {
+    this.history = [];
+  }
+
   private scoreToStatus(score: number): HealthStatus {
     if (score >= 80) return 'healthy';
     if (score >= 50) return 'degraded';

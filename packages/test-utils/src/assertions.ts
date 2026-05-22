@@ -178,6 +178,17 @@ export function assertDeepEqual(
     return;
   }
 
+  // BUG-001 [CRITICAL] Array vs plain object comparison was not handled.
+  // If one is an array and the other is a plain object, both pass typeof === 'object'
+  // but should be treated as a type mismatch.
+  if (Array.isArray(actual) !== Array.isArray(expected)) {
+    const actualType = Array.isArray(actual) ? 'array' : 'object';
+    const expectedType = Array.isArray(expected) ? 'array' : 'object';
+    throw new AssertionError(
+      `Type mismatch at ${path || 'root'}: expected ${expectedType}, got ${actualType}`,
+    );
+  }
+
   if (typeof actual === 'object' && typeof expected === 'object') {
     const actualObj = actual as Record<string, unknown>;
     const expectedObj = expected as Record<string, unknown>;
@@ -194,6 +205,10 @@ export function assertDeepEqual(
       assertDeepEqual(actualObj[key], expectedObj[key], currentPath);
     }
     return;
+  }
+
+  if (typeof actual === 'number' && typeof expected === 'number') {
+    if (Number.isNaN(actual) && Number.isNaN(expected)) return;
   }
 
   if (actual !== expected) {

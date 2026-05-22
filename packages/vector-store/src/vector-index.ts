@@ -52,6 +52,9 @@ export class VectorIndex {
 
   search(query: number[], topK: number): SearchResult[] {
     if (topK <= 0) return [];
+    if (query.length !== this.dimension) {
+      throw new Error(`Query dimension ${query.length} does not match index dimension ${this.dimension}`);
+    }
 
     const results: SearchResult[] = [];
 

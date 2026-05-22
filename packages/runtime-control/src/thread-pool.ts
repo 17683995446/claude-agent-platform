@@ -52,7 +52,7 @@ export class ThreadPoolManager {
     }
   }
 
-  async submit(task: PoolTask): Promise<unknown> {
+  async submit(task: PoolTask, timeoutMs: number = 30000): Promise<unknown> {
     const taskId = task.id || `task-${++this.idCounter}`;
     const fullTask: PoolTask = { ...task, id: taskId };
 
@@ -68,15 +68,48 @@ export class ThreadPoolManager {
 
     // No idle worker - wait and retry
     return new Promise((resolve, reject) => {
+      let claimed = false;
+      const timeoutId = setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!claimed) {
+          // Remove task from queue since it timed out
+          const queueIdx = this.taskQueue.indexOf(fullTask);
+          if (queueIdx >= 0) this.taskQueue.splice(queueIdx, 1);
+          claimed = true;
+          reject(new Error(`Task ${taskId} timed out waiting for available worker`));
+        }
+      }, timeoutMs);
+
       const checkInterval = setInterval(async () => {
+        if (claimed) {
+          clearInterval(checkInterval);
+          clearTimeout(timeoutId);
+          return;
+        }
         const idleWorker = this.workers.find(w => w.status === 'idle');
         if (idleWorker) {
-          clearInterval(checkInterval);
-          try {
-            const result = await this.executeTask(idleWorker, fullTask);
-            resolve(result);
-          } catch (err) {
-            reject(err);
+          // Check if this specific task is still at the front of the queue
+          // to avoid multiple waiting tasks grabbing the same worker
+          const queueIdx = this.taskQueue.indexOf(fullTask);
+          if (queueIdx === -1) {
+            // Task was already executed or removed
+            clearInterval(checkInterval);
+            clearTimeout(timeoutId);
+            claimed = true;
+            return;
+          }
+          // Only claim if our task is at the front of the queue
+          const frontTask = this.taskQueue[0];
+          if (frontTask === fullTask) {
+            clearInterval(checkInterval);
+            clearTimeout(timeoutId);
+            claimed = true;
+            try {
+              const result = await this.executeTask(idleWorker, fullTask);
+              resolve(result);
+            } catch (err) {
+              reject(err);
+            }
           }
         }
       }, 10);
@@ -145,6 +178,11 @@ export class ThreadPoolManager {
           this.workers.splice(i, 1);
           toRemove--;
         }
+      }
+      // If we still need to remove more but only busy workers remain,
+      // update poolSize to reflect actual worker count to stay consistent
+      if (toRemove > 0) {
+        this.poolSize = this.workers.length;
       }
     }
   }

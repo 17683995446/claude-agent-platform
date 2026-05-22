@@ -561,7 +561,11 @@ export function createMockCircuitBreaker(): MockCircuitBreaker {
         const result = await fn();
         state.successCount++;
         if (state.state === 'half-open') {
+          // BUG-006 [MEDIUM] When transitioning from half-open to closed, failureCount
+          // was not reset. This meant the next failure would immediately re-open the
+          // circuit since failureCount was still >= 5.
           state.state = 'closed';
+          state.failureCount = 0;
         }
         return result;
       } catch (err) {

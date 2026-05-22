@@ -102,6 +102,9 @@ export class Application {
 
   async start(): Promise<void> {
     if (this.phase === 'running') return;
+    if (this.phase === 'initializing' || this.phase === 'starting') {
+      throw new Error(`Application is already ${this.phase}`);
+    }
     this.phase = 'initializing';
 
     try {
@@ -131,6 +134,9 @@ export class Application {
 
   async stop(): Promise<void> {
     if (this.phase === 'stopped' || this.phase === 'idle') return;
+    if (this.phase === 'stopping') {
+      throw new Error('Application is already stopping');
+    }
     this.phase = 'stopping';
 
     try {

@@ -100,7 +100,8 @@ export class LogAggregator {
         results = results.filter(e => e.meta && e.meta[key] === value);
       }
     }
-    if (query.limit) {
+    if (query.limit !== undefined) {
+      if (query.limit <= 0) return [];
       results = results.slice(-query.limit);
     }
 

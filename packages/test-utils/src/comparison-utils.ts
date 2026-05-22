@@ -46,6 +46,14 @@ export function deepDiff(actual: unknown, expected: unknown, path: string = ''):
     return results;
   }
 
+  // BUG-003 [MEDIUM] Array vs plain object comparison was not handled.
+  // If one is an array and the other is a plain object, both pass typeof === 'object'
+  // but should be reported as a type change.
+  if (Array.isArray(actual) !== Array.isArray(expected)) {
+    results.push({ type: 'changed', path: path || 'root', actual, expected });
+    return results;
+  }
+
   if (typeof actual === 'object' && typeof expected === 'object') {
     const actualObj = actual as Record<string, unknown>;
     const expectedObj = expected as Record<string, unknown>;
@@ -136,6 +144,11 @@ export function isEqual(actual: unknown, expected: unknown): boolean {
     if (actual.length !== expected.length) return false;
     return actual.every((val, idx) => isEqual(val, expected[idx]));
   }
+
+  // BUG-004 [MEDIUM] Array vs plain object comparison was not handled.
+  // If one is an array and the other is a plain object, both pass typeof === 'object'
+  // but they should not be considered equal.
+  if (Array.isArray(actual) !== Array.isArray(expected)) return false;
 
   if (typeof actual === 'object' && typeof expected === 'object') {
     const actualObj = actual as Record<string, unknown>;
