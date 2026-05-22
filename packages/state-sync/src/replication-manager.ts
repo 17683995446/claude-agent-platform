@@ -112,7 +112,7 @@ export class ReplicationManager {
     // Use writeQuorumDefault if set, otherwise calculate from replicationFactor
     let requiredQuorum: number;
     if (this.writeQuorumDefault.type === 'all') {
-      requiredQuorum = aliveNodes.length;
+      requiredQuorum = this.replicationFactor;
     } else if (this.writeQuorumDefault.type === 'one') {
       requiredQuorum = 1;
     } else {
