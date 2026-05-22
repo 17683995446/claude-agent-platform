@@ -45,12 +45,12 @@ export class WorkingMemory {
       throw new Error('MemoryItem must have id and content');
     }
     const enriched: MemoryItem = {
+      ...item,
       relevance: item.relevance ?? 0.5,
       timestamp: item.timestamp ?? Date.now(),
       accessCount: item.accessCount ?? 0,
       metadata: item.metadata ?? {},
       type: item.type ?? 'context',
-      ...item,
     };
     // If at capacity, evict lowest relevance item
     if (this.items.size >= this.capacity && !this.items.has(enriched.id)) {

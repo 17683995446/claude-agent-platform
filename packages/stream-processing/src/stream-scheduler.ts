@@ -13,6 +13,7 @@ interface ScheduledStream {
   timer: ReturnType<typeof setInterval> | undefined;
   processed: number;
   errors: number;
+  started: boolean; // BUG-14 fix: track if processor.input has been called
 }
 
 let schedulerCounter = 0;
@@ -38,6 +39,7 @@ export class StreamScheduler {
       timer: undefined,
       processed: 0,
       errors: 0,
+      started: false,
     };
     this.scheduled.set(id, entry);
 
@@ -125,7 +127,11 @@ export class StreamScheduler {
 
   private startScheduledStream(entry: ScheduledStream): void {
     entry.processor.start();
-    entry.processor.input(entry.source);
+    // BUG-14 fix: only call input() once to avoid duplicate subscriptions on pause/resume
+    if (!entry.started) {
+      entry.processor.input(entry.source);
+      entry.started = true;
+    }
     entry.timer = setInterval(() => {
       if (entry.paused) return;
       const stats = entry.processor.getStats();

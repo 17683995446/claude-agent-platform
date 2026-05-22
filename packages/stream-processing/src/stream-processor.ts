@@ -88,7 +88,6 @@ export class StreamProcessor<TIn, TOut> {
               this.outputStream.publish(item as TOut);
               this.processed++;
             }
-            current = undefined;
           } else {
             // Not the last stage: process each item through remaining stages
             const remainingStages = this.stages.slice(stageIdx + 1);
@@ -109,19 +108,18 @@ export class StreamProcessor<TIn, TOut> {
               this.outputStream.publish(itemResult as TOut);
               this.processed++;
             }
-            current = undefined;
           }
+          // Array expansion handled; skip normal publish path
+          return;
         } else if (result instanceof Promise) {
           current = await result;
         } else {
           current = result;
         }
       }
-      // If current was not set to undefined (no array expansion), publish it
-      if (current !== undefined) {
-        this.outputStream.publish(current as TOut);
-        this.processed++;
-      }
+      // If we reach here, no array expansion occurred; publish the final result
+      this.outputStream.publish(current as TOut);
+      this.processed++;
     } catch (err) {
       this.errors++;
       if (this.errorHandler) {

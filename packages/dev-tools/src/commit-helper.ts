@@ -92,10 +92,8 @@ export class CommitHelper {
       const mostCommon = dirs.sort((a, b) =>
         dirs.filter(d => d === b).length - dirs.filter(d => d === a).length
       )[0];
-      if (mostCommon && mostCommon !== dirs[0]) {
+      if (mostCommon) {
         scope = mostCommon;
-      } else if (dirs[0]) {
-        scope = dirs[0];
       }
     }
 

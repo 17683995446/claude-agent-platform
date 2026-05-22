@@ -59,7 +59,7 @@ export class ArchitectureAnalyzer {
     this.project = project;
     const pattern = this.detectPattern();
     const components = this.detectComponents();
-    const violations: LayerViolation[] = [];
+    const violations = this.checkLayerViolations([]);
     const graph = this.getComponentGraph();
     const fitnessScore = this.calculateFitnessScore(components, violations);
 

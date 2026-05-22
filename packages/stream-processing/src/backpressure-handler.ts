@@ -17,7 +17,8 @@ export class BackpressureHandler {
     lowWatermark?: number;
     strategy?: 'drop' | 'buffer' | 'error';
   }) {
-    this.maxPending = options.maxPending ?? 1000;
+    // BUG-11 fix: ensure maxPending >= 1
+    this.maxPending = Math.max(1, options.maxPending ?? 1000);
     this.highWatermark = options.highWatermark ?? Math.floor(this.maxPending * 0.8);
     this.lowWatermark = options.lowWatermark ?? Math.floor(this.maxPending * 0.3);
     this.strategy = options.strategy ?? 'drop';

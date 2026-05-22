@@ -123,7 +123,7 @@ describe('ComplexityAnalyzer', () => {
   test('should return empty result for empty code', () => {
     const result = analyzer.analyze('', 'typescript');
     expect(result.cyclomatic).toBe(1);
-    expect(result.loc).toBe(1); // empty string split gives ['']
+    expect(result.loc).toBe(0); // empty string should have 0 LOC
   });
 
   test('should support custom thresholds', () => {
@@ -441,6 +441,16 @@ describe('MaintainabilityIndex', () => {
     const result = mi.calculateForProject([]);
     expect(result.averageScore).toBe(0);
     expect(result.grade).toBe('F');
+  });
+
+  test('should handle empty code', () => {
+    const result = mi.calculate('');
+    expect(result.score).toBe(100);
+    expect(result.grade).toBe('A');
+    expect(result.loc).toBe(0);
+    expect(result.halsteadVolume).toBe(0);
+    expect(result.cyclomaticComplexity).toBe(0);
+    expect(result.recommendations.length).toBe(0);
   });
 
   test('should track trend data', () => {

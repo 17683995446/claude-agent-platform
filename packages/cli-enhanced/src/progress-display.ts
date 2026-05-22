@@ -94,7 +94,7 @@ export class ProgressBar {
    */
   increment(step: number = 1): void {
     if (!this.state || !this.state.running) return;
-    this.state.current = Math.min(this.state.current + step, this.state.total);
+    this.state.current = Math.min(Math.max(0, this.state.current + step), this.state.total);
     this.render();
   }
 

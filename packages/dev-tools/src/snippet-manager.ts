@@ -164,7 +164,12 @@ export class SnippetManager {
   }
 
   importSnippets(data: string): number {
-    const parsed = JSON.parse(data);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return 0;
+    }
     const snippets = Array.isArray(parsed) ? parsed : [parsed];
     let count = 0;
 

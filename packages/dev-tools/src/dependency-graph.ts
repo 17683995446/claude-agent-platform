@@ -101,18 +101,29 @@ export class DependencyGraphVisualizer {
       return undefined;
     }
 
-    const dir = fromFile.includes('/') ? fromFile.substring(0, fromFile.lastIndexOf('/')) : '';
+    let dir = fromFile.includes('/') ? fromFile.substring(0, fromFile.lastIndexOf('/')) : '';
     // Resolve relative path
     let resolved = importPath;
     if (importPath.startsWith('./')) {
       resolved = dir + '/' + importPath.substring(2);
-    } else if (importPath.startsWith('../')) {
-      resolved = dir + '/' + importPath.substring(3);
     } else if (importPath.startsWith('/')) {
       resolved = importPath.substring(1);
     } else {
+      // Handle ../ and mixed relative paths
       resolved = dir + '/' + importPath;
     }
+
+    // Normalize ../ segments
+    const parts = resolved.split('/');
+    const normalized: string[] = [];
+    for (const part of parts) {
+      if (part === '..') {
+        normalized.pop();
+      } else if (part !== '.') {
+        normalized.push(part);
+      }
+    }
+    resolved = normalized.join('/');
 
     const normalizedResolved = this.normalizePath(resolved);
 

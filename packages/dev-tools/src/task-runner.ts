@@ -93,12 +93,14 @@ export class TaskRunner {
 
     try {
       const timeout = task.options.timeout || 30000;
+      let timeoutId: ReturnType<typeof setTimeout>;
       const result = await Promise.race([
         Promise.resolve(task.handler()),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Task '${taskName}' timed out after ${timeout}ms`)), timeout)
-        ),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`Task '${taskName}' timed out after ${timeout}ms`)), timeout);
+        }),
       ]);
+      clearTimeout(timeoutId!);
       output = result !== undefined ? String(result) : '';
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -161,8 +163,7 @@ export class TaskRunner {
     return this.tasks.has(name);
   }
 
-  private hasCircularDependency(taskName: string, visited: Set<string> = new Set(), path: string[] = []): boolean {
-    if (visited.has(taskName)) return false;
+  private hasCircularDependency(taskName: string, path: string[] = []): boolean {
     if (path.includes(taskName)) return true;
 
     const task = this.tasks.get(taskName);
@@ -170,12 +171,11 @@ export class TaskRunner {
 
     const newPath = [...path, taskName];
     for (const dep of task.options.dependencies || []) {
-      if (this.hasCircularDependency(dep, visited, newPath)) {
+      if (this.hasCircularDependency(dep, newPath)) {
         return true;
       }
     }
 
-    visited.add(taskName);
     return false;
   }
 

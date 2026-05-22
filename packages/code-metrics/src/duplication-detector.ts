@@ -60,12 +60,19 @@ export class DuplicationDetector {
 
     const clonePairs = this.findClones(opts.similarityThreshold || 0.8);
     const totalLines = files.reduce((sum, f) => sum + f.content.split('\n').length, 0);
-    const duplicatedLines = new Set<number>();
+
+    // Track duplicated lines per file to avoid cross-file line number conflicts
+    const duplicatedLineSet = new Set<string>();
     for (const pair of clonePairs) {
-      for (let i = pair.startLine1; i <= pair.endLine1; i++) duplicatedLines.add(i);
+      for (let i = pair.startLine1; i <= pair.endLine1; i++) {
+        duplicatedLineSet.add(`${pair.file1}:${i}`);
+      }
+      for (let i = pair.startLine2; i <= pair.endLine2; i++) {
+        duplicatedLineSet.add(`${pair.file2}:${i}`);
+      }
     }
 
-    const duplicationRate = totalLines > 0 ? duplicatedLines.size / totalLines : 0;
+    const duplicationRate = totalLines > 0 ? duplicatedLineSet.size / totalLines : 0;
 
     const filesWithDuplicates = new Set<string>();
     for (const pair of clonePairs) {

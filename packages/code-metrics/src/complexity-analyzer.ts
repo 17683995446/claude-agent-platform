@@ -49,7 +49,7 @@ export class ComplexityAnalyzer {
 
   analyze(code: string, language: string): ComplexityResult {
     const lines = code.split('\n');
-    const loc = lines.length;
+    const loc = code === '' ? 0 : lines.length;
     const sloc = this.countSLOC(lines);
     const cloc = this.countCLOC(lines);
     const cyclomatic = this.calculateCyclomatic(code, language);
@@ -146,12 +146,17 @@ export class ComplexityAnalyzer {
 
   calculateCyclomatic(code: string, _language: string): number {
     let complexity = 1;
+    // Match 'else if' first, then 'if' only when not preceded by 'else '
+    const elseIfMatches = code.match(/\belse\s+if\b/g);
+    if (elseIfMatches) complexity += elseIfMatches.length;
+    // Remove 'else if' occurrences to avoid double-counting the 'if'
+    const codeWithoutElseIf = code.replace(/\belse\s+if\b/g, 'else __REPLACED__');
     const patterns = [
-      /\bif\b/g, /\belse\s+if\b/g, /\bcase\b/g, /\bfor\b/g,
+      /\bif\b/g, /\bcase\b/g, /\bfor\b/g,
       /\bwhile\b/g, /&&/g, /\|\|/g, /\bcatch\b/g, /\?\?/g,
     ];
     for (const pattern of patterns) {
-      const matches = code.match(pattern);
+      const matches = codeWithoutElseIf.match(pattern);
       if (matches) complexity += matches.length;
     }
     return complexity;

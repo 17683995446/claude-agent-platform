@@ -203,12 +203,15 @@ export class DependencyAnalyzer {
     }
 
     for (const dep of allDeps) {
-      const isUsedAsDependency = Object.values(this.graph.nodes).some(
-        n => n.dependencies.includes(dep)
-      );
       const existsAsFile = Object.keys(this.graph.nodes).includes(dep);
-      if (isUsedAsDependency && !existsAsFile && !dep.startsWith('.') && !BUILTIN_MODULES.has(dep)) {
-        // Check if it's actually used in code
+      const isBuiltIn = BUILTIN_MODULES.has(dep);
+      const isInternal = dep.startsWith('.') || dep.startsWith('/');
+
+      // Skip internal deps (resolved to files) and built-in modules
+      if (isInternal || isBuiltIn) continue;
+
+      // External dependency: check if it's actually referenced in code
+      if (!existsAsFile) {
         const isReferenced = this.files.some(f => f.content.includes(dep));
         if (!isReferenced) {
           unused.push(dep);

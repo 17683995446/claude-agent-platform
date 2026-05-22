@@ -307,26 +307,28 @@ describe('FileWatcher', () => {
   });
 
   test('should emit events to specific handlers', (done) => {
+    watcher.watch('/tmp/test');
     watcher.on('create', (event) => {
       expect(event.type).toBe('create');
-      expect(event.path).toBe('/tmp/newfile.ts');
+      expect(event.path).toBe('/tmp/test/newfile.ts');
       done();
     });
     watcher.simulateEvent({
       type: 'create',
-      path: '/tmp/newfile.ts',
+      path: '/tmp/test/newfile.ts',
       timestamp: Date.now(),
     });
   });
 
   test('should emit events to "all" handlers', (done) => {
+    watcher.watch('/tmp/test');
     watcher.on('all', (event) => {
       expect(event.type).toBe('modify');
       done();
     });
     watcher.simulateEvent({
       type: 'modify',
-      path: '/tmp/file.ts',
+      path: '/tmp/test/file.ts',
       timestamp: Date.now(),
     });
   });
@@ -364,27 +366,29 @@ describe('FileWatcher', () => {
   });
 
   test('should handle rename events', (done) => {
+    watcher.watch('/tmp/test');
     watcher.on('rename', (event) => {
       expect(event.type).toBe('rename');
-      expect(event.oldPath).toBe('/tmp/old.ts');
+      expect(event.oldPath).toBe('/tmp/test/old.ts');
       done();
     });
     watcher.simulateEvent({
       type: 'rename',
-      path: '/tmp/new.ts',
-      oldPath: '/tmp/old.ts',
+      path: '/tmp/test/new.ts',
+      oldPath: '/tmp/test/old.ts',
       timestamp: Date.now(),
     });
   });
 
   test('should handle delete events', (done) => {
+    watcher.watch('/tmp/test');
     watcher.on('delete', (event) => {
       expect(event.type).toBe('delete');
       done();
     });
     watcher.simulateEvent({
       type: 'delete',
-      path: '/tmp/removed.ts',
+      path: '/tmp/test/removed.ts',
       timestamp: Date.now(),
     });
   });

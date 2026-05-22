@@ -109,6 +109,12 @@ export class LongTermMemory {
     minImportance?: number;
     pattern?: string;
   }): number {
+    // Safety: if no criteria specified, don't delete anything
+    if (criteria.maxAge === undefined && criteria.minImportance === undefined &&
+        (criteria.tags === undefined || criteria.tags.length === 0) &&
+        criteria.pattern === undefined) {
+      return 0;
+    }
     let count = 0;
     const now = Date.now();
     const toDelete: string[] = [];
@@ -186,6 +192,10 @@ export class LongTermMemory {
         metadata: { ...(entry.metadata ?? {}) },
       });
     }
+  }
+
+  clear(): void {
+    this.entries.clear();
   }
 
   private evictOldest(): void {

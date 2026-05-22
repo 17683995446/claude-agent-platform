@@ -117,6 +117,7 @@ export class LogViewer {
    * 获取最后 N 条日志
    */
   tail(count: number): LogEntry[] {
+    if (count <= 0) return [];
     return this.entries.slice(-count);
   }
 
@@ -186,6 +187,10 @@ export class LogViewer {
   startFollow(callback: (entry: LogEntry) => void): void {
     this.followInterval = setInterval(() => {
       // In a real implementation, this would poll for new entries
+      // Emit any entries added since last check
+      if (this.entries.length > 0) {
+        callback(this.entries[this.entries.length - 1]);
+      }
     }, 1000);
   }
 

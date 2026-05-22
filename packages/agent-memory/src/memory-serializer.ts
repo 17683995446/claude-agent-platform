@@ -81,11 +81,23 @@ export class MemorySerializer {
       }
       // Restore long-term memory
       const ltm = manager.getLongTermMemory();
+      ltm.clear();
       ltm.import(data.longTermMemory);
       // Restore episodic memory
       const em = manager.getEpisodicMemory();
+      em.clear();
       for (const ep of data.episodicMemory) {
-        em.record(ep);
+        // record() generates new id/timestamp, so we need to work around it
+        // by using the public record method which is the only way to add episodes
+        em.record({
+          context: ep.context,
+          actions: ep.actions,
+          outcome: ep.outcome,
+          emotion: ep.emotion,
+          importance: ep.importance,
+          tags: ep.tags,
+          lessons: ep.lessons,
+        });
       }
       // Restore semantic memory
       const sm = manager.getSemanticMemory();
@@ -162,21 +174,27 @@ export class MemorySerializer {
     const newWorkingIds = new Set(newState.workingMemory.map((i) => i.id));
     const oldLtKeys = new Set(oldState.longTermMemory.map((e) => e.key));
     const newLtKeys = new Set(newState.longTermMemory.map((e) => e.key));
+    const oldStIds = new Set(oldState.shortTermMemory.map((m) => m.id));
+    const newStIds = new Set(newState.shortTermMemory.map((m) => m.id));
+    const oldEpIds = new Set(oldState.episodicMemory.map((e) => e.id));
+    const newEpIds = new Set(newState.episodicMemory.map((e) => e.id));
+    const oldConceptNames = new Set(oldState.semanticMemory.concepts.map((c) => c.name));
+    const newConceptNames = new Set(newState.semanticMemory.concepts.map((c) => c.name));
 
     return {
       added: {
         working: newState.workingMemory.filter((i) => !oldWorkingIds.has(i.id)).length,
-        shortTerm: newState.shortTermMemory.length - oldState.shortTermMemory.length,
+        shortTerm: newState.shortTermMemory.filter((m) => !oldStIds.has(m.id)).length,
         longTerm: newState.longTermMemory.filter((e) => !oldLtKeys.has(e.key)).length,
-        episodic: newState.episodicMemory.length - oldState.episodicMemory.length,
-        semantic: newState.semanticMemory.concepts.length - oldState.semanticMemory.concepts.length,
+        episodic: newState.episodicMemory.filter((e) => !oldEpIds.has(e.id)).length,
+        semantic: newState.semanticMemory.concepts.filter((c) => !oldConceptNames.has(c.name)).length,
       },
       removed: {
         working: oldState.workingMemory.filter((i) => !newWorkingIds.has(i.id)).length,
-        shortTerm: Math.max(0, oldState.shortTermMemory.length - newState.shortTermMemory.length),
+        shortTerm: oldState.shortTermMemory.filter((m) => !newStIds.has(m.id)).length,
         longTerm: oldState.longTermMemory.filter((e) => !newLtKeys.has(e.key)).length,
-        episodic: Math.max(0, oldState.episodicMemory.length - newState.episodicMemory.length),
-        semantic: Math.max(0, oldState.semanticMemory.concepts.length - newState.semanticMemory.concepts.length),
+        episodic: oldState.episodicMemory.filter((e) => !newEpIds.has(e.id)).length,
+        semantic: oldState.semanticMemory.concepts.filter((c) => !newConceptNames.has(c.name)).length,
       },
       modified: {
         longTerm: newState.longTermMemory.filter(

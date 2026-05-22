@@ -240,7 +240,7 @@ export class MetricsDashboard {
     html += '<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}';
     html += '.score{font-size:48px;font-weight:bold;text-align:center;margin:20px 0}';
     html += '.alert{padding:10px;margin:5px 0;border-radius:4px}';
-    html += '.critical{background:#fee;color:#c00} .error{background:#fee;color:#c00}';
+    html += '.critical{background:#fee;color:#c00} .error{background:#fde;color:#c60}';
     html += '.warning{background:#ffe;color:#860} .info{background:#eff;color:#06c}';
     html += 'table{width:100%;border-collapse:collapse} th,td{border:1px solid #ddd;padding:8px;text-align:left}';
     html += '</style></head><body>';

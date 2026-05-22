@@ -10,6 +10,11 @@ export class StreamReplay<T> {
   private subscription: { unsubscribe: () => void } | undefined;
 
   record(stream: EventStream<T>): void {
+    // Stop any previous recording to avoid duplicate subscriptions
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+      this.subscription = undefined;
+    }
     this.recorded = [];
     this.recording = true;
     this.recordingStart = Date.now();

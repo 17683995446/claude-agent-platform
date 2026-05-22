@@ -255,9 +255,7 @@ export class TableRenderer {
       return cell;
     });
 
-    if (this.borderStyle === 'solid') {
-      return '|' + cells.join('|') + '|';
-    } else if (this.borderStyle === 'dashed') {
+    if (this.borderStyle === 'solid' || this.borderStyle === 'dashed') {
       return '|' + cells.join('|') + '|';
     }
 
@@ -294,7 +292,9 @@ export class TableRenderer {
   }
 
   private truncate(text: string, maxWidth: number): string {
+    if (maxWidth <= 0) return '';
     if (text.length <= maxWidth) return text;
+    if (maxWidth <= 3) return text.slice(0, maxWidth);
     return text.slice(0, maxWidth - 3) + '...';
   }
 

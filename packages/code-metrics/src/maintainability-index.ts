@@ -34,6 +34,17 @@ export class MaintainabilityIndex {
   }
 
   calculate(code: string): MaintainabilityScore {
+    if (!code.trim()) {
+      return {
+        score: 100,
+        grade: 'A',
+        halsteadVolume: 0,
+        cyclomaticComplexity: 0,
+        loc: 0,
+        recommendations: [],
+      };
+    }
+
     const complexity = this.complexityAnalyzer.analyze(code, 'typescript');
     const halsteadVolume = this.calculateHalsteadVolume(code);
     const cyclomatic = complexity.cyclomatic;

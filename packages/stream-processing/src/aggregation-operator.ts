@@ -67,8 +67,10 @@ export class AggregationOperator<T> {
 
   percentile(p: number, fn: (e: T) => number): number {
     if (this.data.length === 0) return 0;
+    // BUG-9 fix: clamp p to [0, 100] to prevent out-of-bounds access
+    const clampedP = Math.max(0, Math.min(100, p));
     const sorted = [...this.data].map(fn).sort((a, b) => a - b);
-    const index = (p / 100) * (sorted.length - 1);
+    const index = (clampedP / 100) * (sorted.length - 1);
     const lower = Math.floor(index);
     const upper = Math.ceil(index);
     if (lower === upper) return sorted[lower]!;
@@ -77,16 +79,18 @@ export class AggregationOperator<T> {
 
   histogram(fn: (e: T) => number, bins: number): Array<{ min: number; max: number; count: number }> {
     if (this.data.length === 0) return [];
+    // BUG-10 fix: ensure bins >= 1
+    const effectiveBins = Math.max(1, bins);
     const values = this.data.map(fn);
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
     if (minVal === maxVal) {
       return [{ min: minVal, max: maxVal, count: values.length }];
     }
-    const binWidth = (maxVal - minVal) / bins;
+    const binWidth = (maxVal - minVal) / effectiveBins;
     const result: Array<{ min: number; max: number; count: number }> = [];
 
-    for (let i = 0; i < bins; i++) {
+    for (let i = 0; i < effectiveBins; i++) {
       result.push({
         min: minVal + i * binWidth,
         max: minVal + (i + 1) * binWidth,
@@ -96,7 +100,7 @@ export class AggregationOperator<T> {
 
     for (const val of values) {
       let binIndex = Math.floor((val - minVal) / binWidth);
-      if (binIndex >= bins) binIndex = bins - 1;
+      if (binIndex >= effectiveBins) binIndex = effectiveBins - 1;
       result[binIndex]!.count++;
     }
 

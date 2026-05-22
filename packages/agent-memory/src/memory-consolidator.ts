@@ -138,23 +138,20 @@ export class MemoryConsolidator {
           all[i]!.tags = [...new Set([...all[i]!.tags, ...all[j]!.tags])];
           all[i]!.importance = Math.max(all[i]!.importance, all[j]!.importance);
           all[i]!.accessCount += all[j]!.accessCount;
-          longTerm.delete(all[j]!.key);
           mergedAway.add(all[j]!.key);
           merged++;
         }
       }
     }
 
-    // Write merged entries back to long-term memory
-    const surviving: LongTermMemoryEntry[] = [];
-    for (const entry of all) {
-      if (mergedAway.has(entry.key)) {
-        // This entry was merged into another; skip
-        continue;
-      }
-      surviving.push(entry);
+    // Delete all merged-away entries from long-term memory
+    for (const key of mergedAway) {
+      longTerm.delete(key);
     }
+
+    // Update surviving entries that were modified during merge
     // Delete surviving entries first, then re-import with merged values
+    const surviving = all.filter((e) => !mergedAway.has(e.key));
     for (const entry of surviving) {
       longTerm.delete(entry.key);
     }

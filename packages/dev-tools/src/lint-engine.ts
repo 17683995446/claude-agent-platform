@@ -186,7 +186,7 @@ export class LintEngine {
 
       case 'eqeqeq':
         for (let i = 0; i < lines.length; i++) {
-          if (/[^!=]==[^=]/.test(lines[i]) && !/\/\//.test(lines[i].split('==')[0])) {
+          if (/[^!=]==[^=]/.test(lines[i]) && !/===/.test(lines[i]) && !/\/\//.test(lines[i].split('==')[0])) {
             messages.push({ ruleId, severity, message: `Expected '===' instead of '==' on line ${i + 1}`, line: i + 1, fixable: true, source: lines[i] });
           }
         }
@@ -238,7 +238,7 @@ export class LintEngine {
           }
           // Check usage (simple heuristic)
           for (const name of declared) {
-            if (line.includes(name) && !line.match(/(?:const|let|var|function)\s+.*\bname\b/)) {
+            if (line.includes(name) && !line.match(new RegExp(`(?:const|let|var|function)\\s+.*\\b${name}\\b`))) {
               used.push(name);
             }
           }
@@ -368,7 +368,7 @@ export class LintEngine {
     return result;
   }
 
-  fix(code: string, rules?: RuleConfig[]): FixResult {
+  fix(code: string, rules?: RuleConfig[], language: string = 'typescript'): FixResult {
     let fixedCode = code;
     let fixesApplied = 0;
     const effectiveRules = this.resolveRules(rules);
@@ -387,7 +387,7 @@ export class LintEngine {
     }
 
     // Re-lint to get remaining messages
-    const result = this.lint(fixedCode, 'typescript', effectiveRules);
+    const result = this.lint(fixedCode, language, effectiveRules);
 
     return {
       code: fixedCode,
@@ -408,6 +408,7 @@ export class LintEngine {
 
       case 'no-multiple-empty-lines': {
         const maxEmpty = (options.max as number) || 1;
+        // Replace 3+ consecutive newlines (2+ empty lines) with maxEmpty+1 newlines
         result = result.replace(/\n{3,}/g, '\n'.repeat(maxEmpty + 1));
         break;
       }

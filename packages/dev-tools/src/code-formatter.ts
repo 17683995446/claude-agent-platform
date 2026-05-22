@@ -135,7 +135,7 @@ export class CodeFormatter {
 
       if (add && !trimmed.endsWith(';') && !trimmed.endsWith('{') && !trimmed.endsWith('}') && !trimmed.endsWith('(') && !trimmed.endsWith(',') && !trimmed.endsWith(':') && !trimmed.endsWith('=>') && !trimmed.endsWith('?') && !trimmed.endsWith('|') && !trimmed.endsWith('&')) {
         result.push(line + ';');
-      } else if (!add && trimmed.endsWith(';') && !trimmed.includes('for') && !trimmed.includes('for')) {
+      } else if (!add && trimmed.endsWith(';') && !/^\s*for\s*\(/.test(trimmed)) {
         result.push(line.slice(0, -1));
       } else {
         result.push(line);

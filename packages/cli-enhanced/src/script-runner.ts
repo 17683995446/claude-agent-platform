@@ -338,11 +338,16 @@ export class ScriptRunner {
     };
   }
 
+  private escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   private resolveVariables(text: string, variables: Record<string, string>): string {
     let result = text;
     for (const [key, value] of Object.entries(variables)) {
-      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
-      result = result.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+      const escaped = this.escapeRegExp(key);
+      result = result.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'), value);
+      result = result.replace(new RegExp(`\\$\\{${escaped}\\}`, 'g'), value);
     }
     return result;
   }
@@ -350,7 +355,9 @@ export class ScriptRunner {
   private evaluateCondition(condition: string, variables: Record<string, string>): boolean {
     // Simple variable truthiness check
     const resolved = this.resolveVariables(condition, variables);
-    return resolved === 'true' || (resolved !== '' && resolved !== 'false');
+    // Only 'true' (case-insensitive) is truthy; 'false', empty string, '0', 'no', 'off' are falsy
+    const lower = resolved.toLowerCase().trim();
+    return lower === 'true' || lower === '1' || lower === 'yes';
   }
 
   private sleep(ms: number): Promise<void> {

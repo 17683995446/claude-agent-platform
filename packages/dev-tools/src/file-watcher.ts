@@ -96,8 +96,16 @@ export class FileWatcher {
   simulateEvent(event: FileChangeEvent): void {
     if (this.isPaused) return;
 
-    const watchedEntry = this.watchedPaths.get(event.path);
-    if (watchedEntry && this.shouldIgnore(event.path, watchedEntry.options.ignorePatterns || [])) {
+    // Find the matching watched path (exact or parent directory)
+    let watchedEntry: { options: WatchOptions } | undefined;
+    for (const [watchedPath, entry] of this.watchedPaths) {
+      if (event.path === watchedPath || event.path.startsWith(watchedPath + '/')) {
+        watchedEntry = entry;
+        break;
+      }
+    }
+    if (!watchedEntry) return;
+    if (this.shouldIgnore(event.path, watchedEntry.options.ignorePatterns || [])) {
       return;
     }
 
@@ -147,6 +155,9 @@ export class FileWatcher {
     this.debounceTimers.clear();
     this.watchedPaths.clear();
     this.fileStates.clear();
+    for (const handlers of this.handlers.values()) {
+      handlers.clear();
+    }
   }
 
   getOptions(path: string): WatchOptions | undefined {

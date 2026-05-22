@@ -87,7 +87,12 @@ export class ConfigEditor {
     } else {
       let current = this.config;
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!(keys[i] in current) || typeof current[keys[i]] !== 'object' || current[keys[i]] === null) {
+        const existing = current[keys[i]];
+        if (existing === null || existing === undefined || typeof existing !== 'object' || Array.isArray(existing)) {
+          // Warn when overwriting non-object intermediate values
+          if (existing !== undefined && existing !== null && typeof existing !== 'object') {
+            console.warn(`Warning: Overwriting non-object value at "${keys.slice(0, i + 1).join('.')}" with object to set "${path}"`);
+          }
           current[keys[i]] = {};
         }
         current = current[keys[i]] as Record<string, unknown>;

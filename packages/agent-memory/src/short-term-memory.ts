@@ -80,6 +80,7 @@ export class ShortTermMemory {
     while (this.totalTokens > this.maxTokens && this.messages.length > 0) {
       const removed = this.messages.shift()!;
       this.totalTokens -= removed.tokens;
+      if (this.totalTokens < 0) this.totalTokens = 0;
       trimmed++;
     }
     return trimmed;

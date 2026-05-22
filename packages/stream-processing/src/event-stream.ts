@@ -25,7 +25,11 @@ export class EventStream<T> {
     this.evict();
     for (const sub of this.subscriptions.values()) {
       if (sub.active) {
-        void sub.handler(event);
+        try {
+          void sub.handler(event);
+        } catch {
+          // Subscriber errors should not break the publish loop
+        }
       }
     }
   }

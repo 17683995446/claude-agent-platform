@@ -306,7 +306,7 @@ export class OutputFormatter {
     const prefix = ' '.repeat(depth * indent);
 
     if (data === null) return `${prefix}null`;
-    if (data === undefined) return `${prefix}null`;
+    if (data === undefined) return `${prefix}~`;
     if (typeof data === 'string') return `${prefix}"${data}"`;
     if (typeof data === 'number' || typeof data === 'boolean') return `${prefix}${String(data)}`;
 

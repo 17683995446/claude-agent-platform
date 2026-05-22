@@ -13,8 +13,9 @@ export class WindowOperator<T> {
   private slideStartTime = 0;
 
   constructor(windowSize: number, slideSize?: number) {
-    this.windowSize = windowSize;
-    this.slideSize = slideSize ?? windowSize;
+    // BUG-4 fix: ensure windowSize >= 1 to prevent infinite loop
+    this.windowSize = Math.max(1, windowSize);
+    this.slideSize = Math.max(1, slideSize ?? windowSize);
     this.windowStartTime = Date.now();
     this.slideStartTime = Date.now();
   }
@@ -52,10 +53,12 @@ export class WindowOperator<T> {
       // Count-based windowing
       this.currentWindow.push(event);
 
+      // BUG-3 fix: ensure slideSize does not exceed windowSize to prevent event loss
+      const effectiveSlide = Math.min(this.slideSize, this.windowSize);
       while (this.currentWindow.length >= this.windowSize) {
         completed.push(this.currentWindow.slice(0, this.windowSize));
         this.windowsEmitted++;
-        this.currentWindow = this.currentWindow.slice(this.slideSize);
+        this.currentWindow = this.currentWindow.slice(effectiveSlide);
       }
     }
 
