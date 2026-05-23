@@ -493,7 +493,10 @@ export class AuthManager {
     // Check context-based rules
     if (context.environment && context.environment === 'production') {
       // Production requires explicit production permission
-      if (!user.permissions.includes(`${resource}:${action}:production`)) {
+      // FIX: Also check inherited permissions from roles
+      const hasProductionPermission = user.permissions.includes(`${resource}:${action}:production`) ||
+        user.roles.some(roleName => this.checkRolePermission(roleName, `${resource}:${action}:production`, new Set()));
+      if (!hasProductionPermission) {
         return false;
       }
     }
@@ -502,7 +505,10 @@ export class AuthManager {
       const hour = context.time.getHours();
       // Outside business hours requires special permission
       if (hour < 8 || hour > 18) {
-        if (!user.permissions.includes(`${resource}:${action}:after-hours`)) {
+        // FIX: Also check inherited permissions from roles
+        const hasAfterHoursPermission = user.permissions.includes(`${resource}:${action}:after-hours`) ||
+          user.roles.some(roleName => this.checkRolePermission(roleName, `${resource}:${action}:after-hours`, new Set()));
+        if (!hasAfterHoursPermission) {
           return false;
         }
       }

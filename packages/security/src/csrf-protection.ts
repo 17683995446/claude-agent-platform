@@ -61,8 +61,18 @@ export class CSRFProtection {
     };
 
     // SEC-14: Enforce max token storage to prevent unbounded memory growth
+    // FIX: Evict oldest tokens when limit is reached, not just cleanup expired ones
     if (this.tokens.size >= this.maxTokens) {
-      this.cleanup();
+      // First try to clean up expired tokens
+      const cleaned = this.cleanup();
+      // If still at limit, evict oldest tokens (FIFO)
+      if (this.tokens.size >= this.maxTokens) {
+        const tokensToRemove = this.tokens.size - this.maxTokens + 1;
+        const keysToRemove = Array.from(this.tokens.keys()).slice(0, tokensToRemove);
+        for (const key of keysToRemove) {
+          this.tokens.delete(key);
+        }
+      }
     }
     this.tokens.set(token, csrfToken);
     return token;

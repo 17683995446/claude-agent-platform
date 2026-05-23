@@ -7,6 +7,7 @@ export interface Session {
   updatedAt: Date;
   metadata?: Record<string, unknown>;
   isActive: boolean;
+  status?: 'active' | 'paused' | 'completed' | 'archived';
 }
 
 export interface CommandHistoryEntry {
@@ -61,6 +62,7 @@ export class CLISessionManager {
       createdAt: new Date(),
       updatedAt: new Date(),
       isActive: false,
+      status: 'active',
     };
 
     this.sessions.set(id, session);
@@ -359,6 +361,100 @@ export class CLISessionManager {
     while (this.history.length > this.maxHistory) {
       this.history.shift();
     }
+  }
+
+  /**
+   * 清除所有会话
+   */
+  clear(): void {
+    this.sessions.clear();
+    this.activeSessionId = null;
+    this.history = [];
+  }
+
+  /**
+   * 导入会话
+   */
+  importSession(json: string): Session | undefined {
+    try {
+      const parsed = JSON.parse(json);
+      // Validate required Session fields
+      if (!parsed || typeof parsed !== 'object') return undefined;
+      if (typeof parsed.name !== 'string') return undefined;
+
+      // Additional validation for session import security
+      // Reject if name is empty or only whitespace
+      if (parsed.name.trim().length === 0) return undefined;
+
+      // Validate status if provided
+      const validStatuses = ['active', 'paused', 'completed', 'archived'];
+      if (parsed.status && !validStatuses.includes(parsed.status)) return undefined;
+
+      const session: Session = {
+        id: this.generateId(),
+        name: parsed.name,
+        createdAt: new Date(parsed.createdAt || Date.now()),
+        updatedAt: new Date(),
+        isActive: false,
+        status: parsed.status ?? 'active',
+        metadata: parsed.metadata || {},
+      };
+      this.sessions.set(session.id, session);
+      return session;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * 暂停会话
+   */
+  pause(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.status = 'paused';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  /**
+   * 恢复会话
+   */
+  resume(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.status = 'active';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  /**
+   * 完成会话
+   */
+  complete(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.status = 'completed';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  /**
+   * 归档会话
+   */
+  archive(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.status = 'archived';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  /**
+   * 根据状态获取会话
+   */
+  getByStatus(status: Session['status']): Session[] {
+    return this.getAllSessions().filter(s => s.status === status);
   }
 
   private generateId(): string {

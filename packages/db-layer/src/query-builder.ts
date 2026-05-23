@@ -26,6 +26,51 @@ export class QueryBuilder {
 
   private readonly VALID_SAVEPOINT_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
+  // SECURITY: Patterns that indicate SQL injection attempts
+  private readonly SQL_INJECTION_PATTERNS = [
+    /;\s*DROP\s+/i,
+    /;\s*DELETE\s+/i,
+    /;\s*INSERT\s+/i,
+    /;\s*UPDATE\s+/i,
+    /;\s*CREATE\s+/i,
+    /;\s*ALTER\s+/i,
+    /UNION\s+SELECT/i,
+    /UNION\s+ALL\s+SELECT/i,
+    /WAITFOR\s+DELAY/i,
+    /BENCHMARK\s*\(/i,
+    /pg_sleep\s*\(/i,
+    /sleep\s*\(/i,
+    /--$/m,
+    /\/\*/,
+    /'\s*OR\s+'?\d+'?\s*=\s*'?\d+'?/i,
+  ];
+
+  // SECURITY: Validate condition string for SQL injection
+  private validateCondition(condition: string): void {
+    for (const pattern of this.SQL_INJECTION_PATTERNS) {
+      if (pattern.test(condition)) {
+        throw new Error(`Potential SQL injection detected in condition: ${condition}`);
+      }
+    }
+  }
+
+  // SECURITY: Validate identifier (table/column names)
+  private validateIdentifier(identifier: string): void {
+    // Allow alphanumeric, underscore, dot (for qualified names), and space (for expressions)
+    // But block obvious injection patterns
+    const dangerousPatterns = [
+      /;\s*DROP\s+/i,
+      /;\s*DELETE\s+/i,
+      /;\s*INSERT\s+/i,
+      /SELECT\s+.*\s+FROM/i,
+    ];
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(identifier)) {
+        throw new Error(`Invalid identifier: ${identifier}`);
+      }
+    }
+  }
+
   select(columns: string[]): QueryBuilder {
     this._select = columns;
     return this;
@@ -91,6 +136,8 @@ export class QueryBuilder {
   }
 
   having(condition: string, params?: unknown[]): QueryBuilder {
+    // SECURITY FIX: Validate condition to prevent SQL injection
+    this.validateCondition(condition);
     this._having.push({ condition, params: params ?? [] });
     return this;
   }

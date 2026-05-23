@@ -228,6 +228,16 @@ export class InputValidator {
   }
 
   /**
+   * Validate that the value is a boolean
+   */
+  isBoolean(): this {
+    if (typeof this.value !== 'boolean') {
+      this.errors.push(`Expected boolean, got ${typeof this.value}`);
+    }
+    return this;
+  }
+
+  /**
    * Validate that the value is an object
    */
   isObject(): this {
@@ -427,6 +437,7 @@ export class InputValidator {
    * WARNING: This is a last-resort defense. Always use parameterized queries
    * (prepared statements) instead of string interpolation for SQL. This method
    * only provides basic escaping and cannot prevent all SQL injection vectors.
+   * SECURITY FIX: Added removal of dangerous SQL keywords and comments
    */
   static sanitizeSQL(input: string): string {
     return input
@@ -436,7 +447,11 @@ export class InputValidator {
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
       .replace(/\x1a/g, '\\Z')
-      .replace(/"/g, '\\"');
+      .replace(/"/g, '\\"')
+      // SECURITY FIX: Remove dangerous SQL keywords and comments
+      .replace(/;/g, '')
+      .replace(/--/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
   }
 
   /**

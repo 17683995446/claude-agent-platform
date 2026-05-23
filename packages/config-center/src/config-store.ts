@@ -19,11 +19,28 @@ interface ConfigVersion {
 }
 
 /**
+ * 危险的属性键，可能导致原型污染
+ */
+const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+/**
+ * 检查键是否为危险的属性键
+ */
+function isDangerousKey(key: string): boolean {
+  return DANGEROUS_KEYS.includes(key);
+}
+
+/**
  * 深度合并两个对象
+ * SECURITY FIX: 添加原型污染防护，拒绝处理危险的键
  */
 export function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
   const result = { ...target };
   for (const key of Object.keys(source)) {
+    // SECURITY FIX: 跳过危险的键，防止原型污染
+    if (isDangerousKey(key)) {
+      continue;
+    }
     const sv = source[key];
     const tv = result[key];
     if (
@@ -44,11 +61,16 @@ export function deepMerge(target: Record<string, unknown>, source: Record<string
 
 /**
  * 通过点号路径获取嵌套值
+ * SECURITY FIX: 添加原型污染防护，拒绝访问危险的键
  */
 export function getByPath(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split('.');
   let current: unknown = obj;
   for (const part of parts) {
+    // SECURITY FIX: 拒绝访问危险的键，防止原型污染
+    if (isDangerousKey(part)) {
+      return undefined;
+    }
     if (current === null || current === undefined || typeof current !== 'object') {
       return undefined;
     }
@@ -59,36 +81,56 @@ export function getByPath(obj: Record<string, unknown>, path: string): unknown {
 
 /**
  * 通过点号路径设置嵌套值
+ * SECURITY FIX: 添加原型污染防护，拒绝设置危险的键
  */
 export function setByPath(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split('.');
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
+    // SECURITY FIX: 拒绝访问或创建危险的键路径
+    if (isDangerousKey(part)) {
+      return;
+    }
     if (current[part] === undefined || current[part] === null || typeof current[part] !== 'object') {
       current[part] = {};
     }
     current = current[part] as Record<string, unknown>;
   }
-  current[parts[parts.length - 1]] = value;
+  const lastPart = parts[parts.length - 1];
+  // SECURITY FIX: 拒绝设置危险的键
+  if (isDangerousKey(lastPart)) {
+    return;
+  }
+  current[lastPart] = value;
 }
 
 /**
  * 通过点号路径删除嵌套值
+ * SECURITY FIX: 添加原型污染防护，拒绝删除危险的键
  */
 export function deleteByPath(obj: Record<string, unknown>, path: string): boolean {
   const parts = path.split('.');
   let current: unknown = obj;
   for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    // SECURITY FIX: 拒绝访问危险的键路径
+    if (isDangerousKey(part)) {
+      return false;
+    }
     if (current === null || current === undefined || typeof current !== 'object') {
       return false;
     }
-    current = (current as Record<string, unknown>)[parts[i]];
+    current = (current as Record<string, unknown>)[part];
   }
   if (current === null || current === undefined || typeof current !== 'object') {
     return false;
   }
   const lastPart = parts[parts.length - 1];
+  // SECURITY FIX: 拒绝删除危险的键
+  if (isDangerousKey(lastPart)) {
+    return false;
+  }
   if (lastPart in (current as Record<string, unknown>)) {
     delete (current as Record<string, unknown>)[lastPart];
     return true;
@@ -98,11 +140,16 @@ export function deleteByPath(obj: Record<string, unknown>, path: string): boolea
 
 /**
  * 通过点号路径检查是否存在
+ * SECURITY FIX: 添加原型污染防护，拒绝检查危险的键
  */
 export function hasByPath(obj: Record<string, unknown>, path: string): boolean {
   const parts = path.split('.');
   let current: unknown = obj;
   for (const part of parts) {
+    // SECURITY FIX: 拒绝检查危险的键
+    if (isDangerousKey(part)) {
+      return false;
+    }
     if (current === null || current === undefined || typeof current !== 'object') {
       return false;
     }

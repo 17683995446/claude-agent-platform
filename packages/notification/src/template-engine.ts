@@ -88,10 +88,19 @@ export class NotificationTemplateEngine {
   }
 
   private resolveValue(key: string, context: Record<string, unknown>): unknown {
+    // SECURITY FIX: Prevent prototype pollution by blocking access to prototype properties
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return undefined;
+    }
+
     const parts = key.split('.');
     let value: unknown = context;
 
     for (const part of parts) {
+      // SECURITY FIX: Block prototype property access at any level
+      if (part === '__proto__' || part === 'constructor' || part === 'prototype') {
+        return undefined;
+      }
       if (value && typeof value === 'object') {
         value = (value as Record<string, unknown>)[part];
       } else {
