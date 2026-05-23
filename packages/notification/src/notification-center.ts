@@ -70,7 +70,8 @@ export class NotificationCenter {
   async send(notification: Notification): Promise<SendResult[]> {
     const results: SendResult[] = [];
 
-    // Deduplication check
+    // Deduplication check - eagerly reserve the key to prevent concurrent sends
+    // from all passing the check before any sets the cache.
     if (notification.dedupeKey) {
       const lastSent = this.dedupeCache.get(notification.dedupeKey);
       if (lastSent && Date.now() - lastSent < this.dedupeWindowMs) {
@@ -82,6 +83,8 @@ export class NotificationCenter {
           error: 'Duplicate notification suppressed',
         }];
       }
+      // Reserve the dedup key immediately to prevent race conditions
+      this.dedupeCache.set(notification.dedupeKey, Date.now());
     }
 
     const channels = Array.isArray(notification.channel)
@@ -135,9 +138,10 @@ export class NotificationCenter {
       }
     }
 
-    // Only mark dedupe cache as sent if at least one channel succeeded
-    if (notification.dedupeKey && results.some(r => r.success)) {
-      this.dedupeCache.set(notification.dedupeKey, Date.now());
+    // Dedup cache was already set eagerly at the top of send().
+    // If all channels failed, remove the reservation so the notification can be retried.
+    if (notification.dedupeKey && !results.some(r => r.success)) {
+      this.dedupeCache.delete(notification.dedupeKey);
     }
 
     this.history.push({

@@ -98,7 +98,13 @@ export class MessageBus {
       topic,
       handler,
       unsubscribe: () => {
-        this.subscriptions.get(topic)?.delete(id);
+        const topicMap = this.subscriptions.get(topic);
+        if (topicMap) {
+          topicMap.delete(id);
+          if (topicMap.size === 0) {
+            this.subscriptions.delete(topic);
+          }
+        }
       },
     };
     this.subscriptions.get(topic)!.set(id, sub);
