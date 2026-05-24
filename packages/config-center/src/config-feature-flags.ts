@@ -77,9 +77,13 @@ export class FeatureFlagManager {
 
     let result: boolean;
 
-    // Check rules first
-    if (flag.config.rules && flag.config.rules.length > 0 && context) {
+    // Check rules first (some rules like 'date' don't require context)
+    if (flag.config.rules && flag.config.rules.length > 0) {
       for (const rule of flag.config.rules) {
+        // Skip rules that require context if no context provided
+        if (!context && (rule.type === 'user' || rule.type === 'segment' || rule.type === 'percentage' || rule.type === 'attribute')) {
+          continue;
+        }
         const ruleResult = this.evaluateRule(rule, context);
         if (ruleResult.matched) {
           result = ruleResult.enabled ?? flag.enabled ?? false;
@@ -264,21 +268,22 @@ export class FeatureFlagManager {
     }
   }
 
-  private evaluateRule(rule: FlagRule, context: FlagContext): { matched: boolean; enabled?: boolean; variant?: string } {
+  private evaluateRule(rule: FlagRule, context?: FlagContext): { matched: boolean; enabled?: boolean; variant?: string } {
     switch (rule.type) {
       case 'user':
-        if (rule.userIds && context.userId) {
+        if (rule.userIds && context?.userId) {
           return { matched: rule.userIds.includes(context.userId), enabled: rule.enabled, variant: rule.variant };
         }
         return { matched: false };
 
       case 'segment':
-        if (rule.segment && context.segment) {
+        if (rule.segment && context?.segment) {
           return { matched: context.segment === rule.segment, enabled: rule.enabled, variant: rule.variant };
         }
         return { matched: false };
 
       case 'percentage': {
+        if (!context) return { matched: false };
         const hash = this.hashContext(context);
         const matched = (hash % 100) < (rule.percentage ?? 0);
         return { matched, enabled: rule.enabled, variant: rule.variant };
@@ -293,7 +298,7 @@ export class FeatureFlagManager {
       }
 
       case 'attribute': {
-        if (rule.attributeName && context.attributes) {
+        if (rule.attributeName && context?.attributes) {
           const attrValue = context.attributes[rule.attributeName];
           const matched = attrValue === rule.attributeValue;
           return { matched, enabled: rule.enabled, variant: rule.variant };

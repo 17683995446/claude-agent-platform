@@ -216,50 +216,60 @@ export class ConfigExporter {
   private parseSimpleYAML(data: string): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     const lines = data.split('\n');
-    const stack: Array<{ indent: number; key: string; obj: Record<string, unknown> }> = [];
+    // Stack stores objects and their indentation levels
+    const stack: Array<{ indent: number; obj: Record<string, unknown>; key: string }> = [];
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trimEnd();
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       const indent = line.length - line.trimStart().length;
-      const match = trimmed.match(/^(\w[\w.-]*):\s*(.*)$/);
+      // Match key: value pattern (key can contain word chars, dots, and hyphens)
+      // Use trimStart() to remove leading whitespace for matching
+      const content = line.trimStart();
+      const match = content.match(/^(\w[\w.-]*):\s*(.*)$/);
       if (!match) continue;
 
       const key = match[1];
-      let value: unknown = match[2].trim() || undefined;
+      let valueStr = match[2].trim();
 
-      if (value === undefined) {
-        // Nested object
-        const newObj: Record<string, unknown> = {};
-        while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
-          stack.pop();
+      // Pop stack to find the correct parent based on indentation
+      while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+
+      // Determine the parent object
+      let parent: Record<string, unknown>;
+      if (stack.length > 0) {
+        // Get the parent from the stack
+        const parentEntry = stack[stack.length - 1];
+        // Ensure parent has an object at this key
+        if (!parentEntry.obj[parentEntry.key] || typeof parentEntry.obj[parentEntry.key] !== 'object') {
+          parentEntry.obj[parentEntry.key] = {};
         }
-        if (stack.length > 0) {
-          stack[stack.length - 1].obj[key] = newObj;
-        } else {
-          result[key] = newObj;
-        }
-        stack.push({ indent, key, obj: newObj });
+        parent = parentEntry.obj[parentEntry.key] as Record<string, unknown>;
       } else {
-        // Parse value
-        if (value === 'null') value = null;
-        else if (value === 'true') value = true;
-        else if (value === 'false') value = false;
-        else if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-        else {
-          const num = Number(value);
-          if (!isNaN(num) && value.trim() !== '') value = num;
-        }
+        parent = result;
+      }
 
-        while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
-          stack.pop();
+      // Check if this line has a value or is a parent of nested content
+      if (valueStr === '') {
+        // This is a parent key for nested content - push to stack
+        stack.push({ indent, obj: parent, key });
+      } else {
+        // This is a leaf value - parse and assign
+        let value: unknown = valueStr;
+        if (valueStr === 'null') value = null;
+        else if (valueStr === 'true') value = true;
+        else if (valueStr === 'false') value = false;
+        else if (valueStr.startsWith('"') && valueStr.endsWith('"')) value = valueStr.slice(1, -1);
+        else if (valueStr.startsWith("'") && valueStr.endsWith("'")) value = valueStr.slice(1, -1);
+        else {
+          const num = Number(valueStr);
+          if (!isNaN(num) && valueStr.trim() !== '') value = num;
         }
-        if (stack.length > 0) {
-          stack[stack.length - 1].obj[key] = value;
-        } else {
-          result[key] = value;
-        }
+        parent[key] = value;
       }
     }
     return result;

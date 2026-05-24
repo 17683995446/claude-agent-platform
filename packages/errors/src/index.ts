@@ -7,6 +7,8 @@ import type { ErrorCode, AgentErrorInfo } from '@claude-agent/types';
 // ---- Base Error Class ----
 
 export class AgentError extends Error {
+  // BUG-FIX-017 [HIGH]: Properties marked as readonly but could still be modified at runtime
+  // FIX: Use Object.defineProperty to create truly immutable properties
   public readonly code: ErrorCode;
   public readonly details: Record<string, unknown>;
   public readonly timestamp: Date;
@@ -20,10 +22,34 @@ export class AgentError extends Error {
   ) {
     super(message);
     this.name = 'AgentError';
-    this.code = code;
-    this.details = details;
-    this.timestamp = new Date();
-    this.cause = cause;
+
+    // Define truly readonly properties using Object.defineProperty
+    Object.defineProperty(this, 'code', {
+      value: code,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(this, 'details', {
+      value: details,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(this, 'timestamp', {
+      value: new Date(),
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    if (cause !== undefined) {
+      Object.defineProperty(this, 'cause', {
+        value: cause,
+        writable: false,
+        enumerable: true,
+        configurable: false,
+      });
+    }
 
     // Maintain proper stack trace in V8 environments
     if (Error.captureStackTrace) {
@@ -64,7 +90,12 @@ export class TaskError extends AgentError {
     this.taskId = taskId;
   }
 
+  // BUG-FIX-016 [HIGH]: suggestedFix did not include taskId when available
+  // FIX: Include taskId in suggested fix message for better debugging
   get suggestedFix(): string {
+    if (this.taskId) {
+      return `Task "${this.taskId}" failed. Check the task input and handler implementation. Ensure all dependencies are available.`;
+    }
     return 'Check the task input and handler implementation. Ensure all dependencies are available.';
   }
 }

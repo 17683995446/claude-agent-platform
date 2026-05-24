@@ -79,8 +79,13 @@ export class ConfigValidator {
       return { valid: false, errors, value: finalValue };
     }
 
-    // Skip further validation if value is undefined/null and not required
-    if (finalValue === undefined || finalValue === null) {
+    // Skip further validation if value is undefined and not required
+    if (finalValue === undefined) {
+      return { valid: true, errors: [], value: finalValue };
+    }
+
+    // null values should still go through type checking (unless type is 'any')
+    if (finalValue === null && (!resolvedSchema.type || resolvedSchema.type === 'any')) {
       return { valid: true, errors: [], value: finalValue };
     }
 
@@ -238,19 +243,21 @@ export class ConfigValidator {
 
   private checkType(path: string, value: unknown, type: ConfigType): ValidationError | null {
     if (type === 'any') return null;
+
+    // Special handling for null - reject it for all types except 'any'
+    if (value === null) {
+      return {
+        path,
+        message: `Expected type "${type}", got "null"`,
+        constraint: 'type',
+      };
+    }
+
     const actualType = Array.isArray(value) ? 'array' : typeof value;
     if (actualType === type) {
-      // For 'object' type, also reject null (since typeof null === 'object')
-      if (type === 'object' && value === null) {
-        return {
-          path,
-          message: `Expected type "${type}", got "null"`,
-          constraint: 'type',
-        };
-      }
       return null;
     }
-    if (type === 'object' && actualType === 'object' && value !== null && !Array.isArray(value)) return null;
+    if (type === 'object' && actualType === 'object' && !Array.isArray(value)) return null;
     return {
       path,
       message: `Expected type "${type}", got "${actualType}"`,
@@ -262,8 +269,12 @@ export class ConfigValidator {
     if (value === undefined || value === null) return undefined;
     try {
       switch (type) {
-        case 'number':
-          return Number(value);
+        case 'number': {
+          const num = Number(value);
+          // Return undefined if coercion results in NaN (and value wasn't 'NaN')
+          if (isNaN(num) && value !== 'NaN') return undefined;
+          return num;
+        }
         case 'boolean':
           if (value === 'true') return true;
           if (value === 'false') return false;

@@ -29,7 +29,10 @@
       "@claude-agent/cli": ["./packages/cli/src"],
       "@claude-agent/http": ["./packages/http/src"],
       "@claude-agent/orchestrator": ["./packages/orchestrator/src"],
-      "@claude-agent/perf": ["./packages/perf/src"]
+      "@claude-agent/perf": ["./packages/perf/src"],
+      "@claude-agent/storage": ["./packages/storage/src"],
+      "@claude-agent/task-queue": ["./packages/task-queue/src"],
+      "@claude-agent/llm-integration": ["./packages/llm-integration/src"]
     }
   },
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
